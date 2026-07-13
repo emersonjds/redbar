@@ -1,0 +1,18 @@
+<?xml version="1.0" ?>
+<coverage version="11.0">
+  <sources><source>.</source></sources>
+  <packages>
+    <package name="src">
+      <classes>
+        <class filename="src/Calc.php" name="Calc">
+          <lines>
+            <line number="7" hits="1"/>
+            <line number="12" hits="0"/>
+            <line number="13" hits="0"/>
+            <line number="15" hits="0"/>
+          </lines>
+        </class>
+      </classes>
+    </package>
+  </packages>
+</coverage>

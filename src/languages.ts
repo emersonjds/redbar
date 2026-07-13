@@ -10,6 +10,13 @@ export type Language = {
   reportPath: string
   /** the command that GENERATES the report */
   coverageCommand: string
+  /**
+   * Where sources live, for formats whose report keys are package-relative (JaCoCo).
+   * Multi-module and Kotlin repos break without this: the coverage keys never intersect the
+   * git paths, and inspect() returns zero gaps with no error. engine.ts probes for the one
+   * that exists on disk.
+   */
+  sourceRoots?: string[]
   /** matches an exported/public symbol declaration; group 1 = the name */
   symbolPatterns: RegExp[]
   /** test libs `init` proposes — the human approves, the tool never installs */
@@ -69,6 +76,7 @@ export const LANGUAGES: Language[] = [
     format: 'jacoco',
     reportPath: 'target/site/jacoco/jacoco.xml',
     coverageCommand: 'mvn -q test jacoco:report',
+    sourceRoots: ['src/main/java', 'src/main/kotlin', 'src/main/scala'],
     symbolPatterns: [
       /^\s*public\s+(?:abstract\s+|final\s+)?class\s+(\w+)/,
       /^\s*public\s+(?:static\s+|final\s+|synchronized\s+|abstract\s+)*[\w<>\[\].]+\s+(\w+)\s*\(/,
@@ -130,7 +138,10 @@ export const LANGUAGES: Language[] = [
     markers: ['package.json'],
     format: 'lcov',
     reportPath: 'coverage/lcov.info',
-    coverageCommand: 'npx vitest run --coverage',
+    // --coverage.reporter=lcov is not optional: lcov is NOT a vitest default reporter, so
+    // plain `--coverage` writes clover/html and leaves reportPath missing. Without this flag
+    // the error tells the user to run a command that cannot fix the error.
+    coverageCommand: 'npx vitest run --coverage --coverage.reporter=lcov',
     symbolPatterns: [
       /^export\s+(?:async\s+)?function\s+(\w+)/,
       /^export\s+(?:abstract\s+)?class\s+(\w+)/,

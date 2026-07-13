@@ -7,9 +7,14 @@ describe('language registry', () => {
     expect(ids).toEqual(expect.arrayContaining(['ts', 'java', 'python', 'rust', 'php', 'go']))
   })
 
-  it('every coverage format maps to one of the three parsers — no orphan format', () => {
-    for (const lang of LANGUAGES) {
-      expect(['lcov', 'jacoco', 'cobertura']).toContain(lang.format)
+  // was: `expect([...]).toContain(lang.format)` — tautological, the type union already proved it
+  // and the compiler made it unfailable. This one can actually fail: a jacoco language whose
+  // report keys are package-relative is unusable without a source root, and the symptom is
+  // zero gaps with no error.
+  it('every jacoco language declares its source roots', () => {
+    for (const lang of LANGUAGES.filter((l) => l.format === 'jacoco')) {
+      expect(lang.sourceRoots?.length, `${lang.id} is jacoco but declares no sourceRoots`)
+        .toBeGreaterThan(0)
     }
   })
 

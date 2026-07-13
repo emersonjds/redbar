@@ -1,0 +1,7 @@
+{
+  "name": "fixture-ts",
+  "private": true,
+  "type": "module",
+  "scripts": { "coverage": "vitest run --coverage" },
+  "devDependencies": { "vitest": "^4.1.10" }
+}

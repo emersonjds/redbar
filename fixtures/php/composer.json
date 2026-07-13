@@ -1,0 +1,4 @@
+{
+  "name": "example/fixture",
+  "require-dev": { "phpunit/phpunit": "^11.0" }
+}

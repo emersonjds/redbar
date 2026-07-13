@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<report name="fixture">
+  <package name="com/example">
+    <sourcefile name="Calc.java">
+      <line nr="4" mi="0" ci="1" mb="0" cb="0"/>
+      <line nr="5" mi="0" ci="3" mb="0" cb="0"/>
+      <line nr="8" mi="4" ci="0" mb="2" cb="0"/>
+      <line nr="9" mi="5" ci="0" mb="0" cb="0"/>
+      <line nr="10" mi="3" ci="0" mb="0" cb="0"/>
+    </sourcefile>
+  </package>
+</report>

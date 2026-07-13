@@ -4,9 +4,9 @@
 
 ### Spec-driven test agents for every layer.
 
-**Math finds what you changed that nothing tests. Agents write it — unit, integration, e2e — following your team's spec, not the model's house style.**
+**Math finds what you changed that nothing tests. Agents write it — unit, integration, e2e — to the library's own standard, not to the model's improvisation.**
 
-*Not another coverage percentage. redbar reads the coverage report your project already produces, crosses it with `git diff`, and names the exact symbols you touched that no test executes — ranked by how dangerous they are. **No model gets a say in that number.** Then it hands each gap to an agent along with the convention for that layer, and the test comes back written the way your team writes tests.*
+*Not another coverage percentage. redbar reads the coverage report your project already produces, crosses it with `git diff`, and names the exact symbols you touched that no test executes — ranked by how dangerous they are. **No model gets a say in that number.** Then it hands each gap to an agent together with the canonical spec for that layer — Playwright's own best practices for e2e, Vitest idiom for unit, Testcontainers for integration — so the test comes back looking like the docs, not like a coin flip.*
 
 [![ci](https://github.com/emersonjds/redbar/actions/workflows/ci.yml/badge.svg)](https://github.com/emersonjds/redbar/actions/workflows/ci.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -28,9 +28,9 @@ Nobody argues that tests matter. Teams still ship without them, and it is almost
 
 **1. Nobody knows where the holes are.** Coverage sits at 43%, and that number tells you nothing about whether *the thing you shipped last Tuesday* is tested. That is a **data problem** — not an AI problem.
 
-**2. When someone does write a test, it comes out in a style nobody agreed on.** And when an AI agent writes it, you get a test in the model's house style, not yours. That is a **convention problem** — not a tooling problem.
+**2. When someone does write a test, it comes out in a style nobody agreed on.** Six developers, six styles. Hand it to an AI agent and you get a seventh — whatever the model felt like that morning. That is a **convention problem** — not a tooling problem.
 
-Conflating the two is the classic mistake. redbar attacks both, with different mechanisms: the first with the compiler and git, the second with a conventions document the agent is forced to read.
+Conflating the two is the classic mistake. redbar attacks both, with different mechanisms: the first with the compiler and git, the second with a spec the agent is forced to read — **the library's own documented standard**, so the tie-breaker is not one more opinion.
 
 ## What it does
 
@@ -95,12 +95,12 @@ Getting this backwards is how tools end up asking a model to *guess* at coverage
 
 ### Spec-driven: the specialist agent **is** a markdown file
 
-Here is the part most AI testing tools get wrong. They hand the model a file and ask for tests. What comes back is a test in **the model's** house style — the style it saw most on GitHub — which is not your team's style, and which your reviewer will reject.
+Here is the part most AI testing tools get wrong. They hand the model a file and ask for a test. What comes back is written in **the model's** house style — whatever it saw most on GitHub that day — and it drifts between runs. Six prompts, six styles. Which is the exact problem you were trying to solve.
 
-So redbar never asks an agent to invent a standard. It hands it yours:
+So redbar never asks an agent to invent a standard. It hands it one:
 
 ```
-prompt = conventions/<language>/<layer>.md   ← your team's testing standard
+prompt = conventions/<language>/<layer>.md   ← the library's canonical standard
        + the gap (file, symbol, uncovered lines, branches)
        + the source
        + one instruction: write exactly this test file, change nothing else
@@ -108,7 +108,26 @@ prompt = conventions/<language>/<layer>.md   ← your team's testing standard
 
 **The "senior specialist in Rust integration testing" *is* the file `conventions/rust/integration.md`.** There is no fleet of 30 hand-tuned prompts to maintain. Swapping the specialist means editing a markdown file — no release, no deploy.
 
-Every convention answers the same five questions, so a human can diff two languages' standards side by side:
+#### The standard is the library's, not a committee's
+
+This is a deliberate reversal, and it is the most important decision in the project.
+
+The obvious move is to write *your company's* testing standard and feed the agent that. It is also wrong. The complaint is **"everyone writes tests their own way"** — and authoring a house standard does not fix that, **it adds a seventh way.** One more opinion, written by whoever came to the meeting, going stale the moment its author changes teams.
+
+There is already a tie-breaker, and it is free:
+
+| Layer | The spec is | Straight from |
+|---|---|---|
+| **e2e** | Role-based locators, web-first assertions, no CSS selectors | [Playwright Best Practices](https://playwright.dev/docs/best-practices) |
+| **unit** (TS) | Vitest / Jest idiom — assert behavior, mock nothing | the official Vitest docs |
+| **unit** (Python) | plain `assert`, fixtures over `setUp` | the pytest docs |
+| **unit** (Java) | JUnit 5 + Mockito | the JUnit 5 user guide |
+| **integration** (Java) | `@SpringBootTest` + Testcontainers | Spring & Testcontainers docs |
+| **unit** (Rust) | `#[cfg(test)] mod tests` | The Rust Book, ch. 11 |
+
+**Nobody argues with the Playwright docs in a code review. Everybody argues with the standard a colleague invented last week.** That asymmetry is the whole point — and the model was *trained* on those docs, so it follows them far more faithfully than it follows anything you wrote on Tuesday.
+
+Every convention answers the same five questions, so two languages' standards can be diffed side by side:
 
 1. Where the test file lives
 2. What one test looks like (a real, copy-pasteable example)
@@ -116,7 +135,16 @@ Every convention answers the same five questions, so a human can diff two langua
 4. What to mock, and what to never mock *(the line between unit and integration lives here)*
 5. Naming
 
-Which means the real deliverable of this project is not the tool. **It is your team's testing standard, written down.** The tool just executes it — and the CI gate is what makes it stick.
+#### When your project really is different
+
+Some choices are genuinely local and no library documents them: MSW or nock? Which fixture factory? Testcontainers, or a shared staging database?
+
+```
+conventions/<lang>/<layer>.md          # ships with redbar — the library's standard
+.redbar/conventions/<lang>/<layer>.md  # optional — your project's deltas, appended
+```
+
+You start from the standard and state only your deltas. **If that override file starts growing, that is the smell** — a project that overrides everything has not adopted a standard, it has written a house style with extra steps.
 
 ### Every layer, decided for you
 
@@ -162,6 +190,42 @@ npx tsx scripts/report.ts /path/to/repo --out REDBAR.html
 ```
 
 Self-contained HTML with a print stylesheet — open it and `Cmd+P` for a PDF, or pipe it through headless Chrome in CI. No PDF library in the dependency tree.
+
+## "Why not just write a skill for this?"
+
+The fair objection. You already have an agent. Write a skill — *"look at the diff, find what isn't tested, write the tests"* — and you are done in an afternoon. So why a tool?
+
+Because a skill is a **prompt**, and the hard half of this problem is **not a prompt problem.**
+
+| | A skill / prompt | redbar |
+|---|---|---|
+| **Where are the gaps?** | The model reads the code and *guesses* what looks untested. It has never executed a line of it. | It reads the coverage report. The runner already **measured** which lines executed. Not an inference — a measurement. |
+| **Is the answer stable?** | Ask twice, get two answers. Different model, different list. | Deterministic. Same input, same output, byte for byte. It can be diffed in a PR. |
+| **Can you trust the number?** | It is an opinion, and opinions cannot fail a build. | It is `git diff ∩ uncovered`. You can verify it by hand. |
+| **Does it run when nobody remembers?** | Only when a human invokes it, on a machine that has it installed. | **CI gate.** It runs on every PR, for everyone — including the people who don't use AI. |
+| **Does it work in Codex? Copilot?** | Skills are harness-specific. Rewrite it. | One engine, four faces: CLI, MCP, CI, library. Any agent, or none. |
+| **Does the test it wrote actually pass?** | The model says it does. | It **runs** the test. Fails twice → marked `needs-human` and deleted. **Never commits red.** |
+| **What does it cost to scan a big repo?** | The model must read the codebase to find candidates — slow, expensive, and it still misses things. | Seconds. It reads a report and a diff. Zero tokens. |
+
+### The two failures a prompt cannot fix
+
+**1. A model cannot know what is covered.** Coverage is a *runtime* fact — which lines the test suite actually executed. It is not visible in the source. An agent staring at `payment.ts` cannot tell you whether line 42 ran last night. It can only guess, confidently. redbar does not guess: the coverage report already contains the answer, measured by the runner.
+
+This is the whole first half of the problem, and it is a **data problem, not an AI problem.** Reaching for a model here is using the one tool that structurally cannot answer the question.
+
+**2. A prompt is opt-in, and opt-in does not change a team.** The developer who was already writing tests will run your skill. The one who wasn't, won't. Nothing changed.
+
+> **You cannot force an agent to use a tool. You force the pull request.**
+
+The CI gate is the only layer nobody routes around — and a gate needs a number that is *reproducible*, not a model's opinion that varies by run. A skill can never be that gate, no matter how good the prompt is.
+
+### And the skill is not the enemy
+
+redbar is not a replacement for your agent — it **aims** it.
+
+Point the redbar MCP server at Claude Code, Codex, or Copilot, and the agent stops guessing what to test. It gets handed the exact symbol, the exact uncovered lines, and the canonical spec for the layer. **The skill is a consumer of redbar, not a competitor to it.**
+
+What redbar contributes is the part a prompt structurally cannot: **the measurement, the determinism, and the gate.**
 
 ## Why ten languages does not cost ten times more
 
@@ -223,8 +287,9 @@ Three layers, in ascending order of force:
 What a team actually gets:
 
 - **Code review stops arguing about tests.** The gap list is in the PR, generated the same way for everyone. It is not a reviewer's opinion against an author's — it is the coverage report against the diff.
-- **New hires learn the house standard by reading it, not by getting a PR rejected.** The conventions document is the deliverable; the tool just executes it.
-- **AI-written tests come out in your style, not the model's.** The agent is handed your conventions before it writes a line.
+- **Tests stop being a matter of taste.** The standard is not a colleague's preference you can push back on — it is the library's own documentation. That ends the argument instead of relocating it.
+- **New hires already know the standard.** They learned Vitest and Playwright the same way everyone else did: from the docs. There is no internal dialect to onboard into.
+- **AI-written tests stop drifting.** The agent is handed the canonical spec before it writes a line, so the same gap produces the same shape of test today and next month — regardless of which model wrote it.
 - **Legacy code is not a wall.** redbar only ever looks at what *changed*. A repo at 12% coverage is not asked to reach 80% — it is asked not to get worse. That is the only coverage rule anyone has ever actually kept.
 
 ## Status

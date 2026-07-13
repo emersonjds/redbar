@@ -134,4 +134,25 @@ describe('findGaps', () => {
     const gaps = findGaps(coverage, changed, ts, () => 'export function Page() { return null }')
     expect(gaps[0]?.kind).toBe('e2e')
   })
+
+  // architectural invariant: a report that reshuffles between identical runs cannot be
+  // diffed in a PR, and the CI gate would flap
+  it('ranks deterministically, including on a score tie', () => {
+    const src = 'export function a() {\n  return 1\n}\nexport function b() {\n  return 2\n}\n'
+    const coverage: Coverage = new Map([
+      ['src/z.ts', { file: 'src/z.ts', covered: [], uncovered: [2] }],
+      ['src/a.ts', { file: 'src/a.ts', covered: [], uncovered: [2] }],
+    ])
+    const changed: ChangedLines = new Map([
+      ['src/z.ts', [2]],
+      ['src/a.ts', [2]],
+    ])
+
+    const once = findGaps(coverage, changed, ts, () => src)
+    const twice = findGaps(coverage, changed, ts, () => src)
+
+    expect(once.map((g) => g.score)).toEqual([2, 2]) // a genuine tie
+    expect(once.map((g) => g.file)).toEqual(['src/a.ts', 'src/z.ts']) // broken alphabetically
+    expect(twice).toEqual(once)
+  })
 })

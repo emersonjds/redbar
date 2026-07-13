@@ -10,7 +10,7 @@ While the major version is `0`, the public surface — the CLI flags, the `gaps.
 
 ## [Unreleased]
 
-## [0.1.0] — 2026-07-13
+## [0.1.1] — 2026-07-13
 
 The engine, the CLI, and the agent skills. Verified against a production React Native app and
 against redbar itself.
@@ -72,5 +72,5 @@ hand-written fixture** — which is the most useful thing we learned.
 - JaCoCo source roots were unreachable from `inspect()`, so any Kotlin or multi-module Maven repo
   returned **zero gaps with no error**.
 
-[Unreleased]: https://github.com/emersonjds/redbar/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/emersonjds/redbar/releases/tag/v0.1.0
+[Unreleased]: https://github.com/emersonjds/redbar/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/emersonjds/redbar/releases/tag/v0.1.1

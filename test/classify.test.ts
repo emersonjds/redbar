@@ -29,6 +29,14 @@ describe('classify', () => {
   it('pure logic is unit', () => {
     expect(classify('src/math.ts', 'export function add(a, b) { return a + b }')).toBe('unit')
   })
+
+  it('a next.js app-router page is still e2e', () => {
+    expect(classify('app/checkout/page.tsx', 'export default function Page() {}')).toBe('e2e')
+  })
+
+  it('a python module under app/ is a package, not a route', () => {
+    expect(classify('app/calc.py', 'def divide(a, b):\n    return a / b')).toBe('unit')
+  })
 })
 
 describe('countBranches', () => {

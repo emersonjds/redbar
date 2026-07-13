@@ -87,7 +87,8 @@ describe('findGaps', () => {
       ['src/x.ts', { file: 'src/x.ts', covered: [], uncovered: [1] }],
     ])
     const changed: ChangedLines = new Map([['src/x.ts', [1]]])
-    const gaps = findGaps(coverage, changed, ts, () => 'const hidden = 1\n')
+    // a bare top-level statement declares nothing, so there is no symbol to blame
+    const gaps = findGaps(coverage, changed, ts, () => 'sideEffect()\n')
     expect(gaps[0]?.symbol).toBeNull()
     expect(gaps[0]?.fullyUncovered).toBe(false)
   })
@@ -133,6 +134,48 @@ describe('findGaps', () => {
     const changed: ChangedLines = new Map([['app/checkout/page.tsx', [1]]])
     const gaps = findGaps(coverage, changed, ts, () => 'export function Page() { return null }')
     expect(gaps[0]?.kind).toBe('e2e')
+  })
+
+  // Found by running redbar on a real React Native repo: 93 changed .ts/.tsx files, and the
+  // jest lcov listed 18 — because jest only instruments what a test IMPORTED. Every file no
+  // test touches was absent from the report, and findGaps skipped it as "uninstrumented".
+  // The file with zero tests was invisible to the tool whose whole job is finding files with
+  // zero tests.
+  describe('a changed source file absent from the coverage report', () => {
+    it('is a total gap, not an uninstrumented file', () => {
+      const src = 'export function pay(a: number) {\n  if (a < 0) throw new Error()\n  return a\n}\n'
+      const coverage: Coverage = new Map() // the report never mentions it
+      const changed: ChangedLines = new Map([['src/pay.ts', [1, 2, 3, 4]]])
+
+      const gaps = findGaps(coverage, changed, ts, () => src)
+
+      expect(gaps).toHaveLength(1)
+      expect(gaps[0]).toMatchObject({
+        file: 'src/pay.ts',
+        symbol: 'pay',
+        fullyUncovered: true,
+        kind: 'unit',
+      })
+      expect(gaps[0]!.score).toBeGreaterThan(0)
+    })
+
+    it('does not turn a test file into a gap', () => {
+      const changed: ChangedLines = new Map([
+        ['src/pay.test.ts', [1, 2]],
+        ['__tests__/pay.integration.test.ts', [1]],
+        ['jest.setup.ts', [1]],
+      ])
+      expect(findGaps(new Map(), changed, ts, () => 'it("works", () => {})')).toEqual([])
+    })
+
+    it('does not turn a non-source file into a gap', () => {
+      const changed: ChangedLines = new Map([
+        ['README.md', [1, 2]],
+        ['package.json', [3]],
+        ['src/logo.svg', [1]],
+      ])
+      expect(findGaps(new Map(), changed, ts, () => 'whatever')).toEqual([])
+    })
   })
 
   // architectural invariant: a report that reshuffles between identical runs cannot be

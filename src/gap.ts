@@ -14,16 +14,22 @@ export function findGaps(
   const gaps: Gap[] = []
 
   for (const [file, changedInFile] of changed) {
-    const fc = coverage.get(file)
-    if (!fc) continue // not instrumented: test, config, doc
+    if (!isProductCode(file, lang)) continue // test, config, doc, asset — never a gap
 
-    const uncovered = new Set(fc.uncovered)
+    const fc = coverage.get(file)
+
+    // A source file ABSENT from the report is not "uninstrumented" — it is a file that no test
+    // imports, which is the biggest gap there is. Jest and pytest only instrument what a test
+    // imported, so a wholly untested file never appears in the report at all. Treating that as
+    // "nothing to do" is how redbar reported 6 gaps on a repo with 93 untested changed files.
+    const uncovered = new Set(fc ? fc.uncovered : changedInFile)
+    const covered = new Set(fc ? fc.covered : [])
+
     const gapLines = changedInFile.filter((n) => uncovered.has(n)).sort((a, b) => a - b)
     if (gapLines.length === 0) continue
 
     const source = readSource(file) ?? ''
     const symbols = extractSymbols(source, lang)
-    const covered = new Set(fc.covered)
     const kind = classify(file, source)
 
     // group by symbol IDENTITY, not by name: two symbols can share a name (overloads, several
@@ -57,6 +63,17 @@ export function findGaps(
   return gaps.sort(
     (a, b) => b.score - a.score || b.lines.length - a.lines.length || a.file.localeCompare(b.file),
   )
+}
+
+/**
+ * Product code = a source extension for this language, and not a test/spec/fixture.
+ * This is what lets an absent-from-report file be treated as a total gap without every changed
+ * README, lockfile and snapshot becoming one too. Both rules are registry data — no language
+ * branching here.
+ */
+function isProductCode(file: string, lang: Language): boolean {
+  if (lang.testFilePattern.test(file)) return false
+  return lang.sourceExtensions.some((ext) => file.endsWith(ext))
 }
 
 function hasCoveredLine(span: SourceSymbol, covered: Set<number>): boolean {

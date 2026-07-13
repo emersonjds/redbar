@@ -71,4 +71,52 @@ describe('countBranches', () => {
   it('does not count the word if inside an identifier', () => {
     expect(countBranches('const notify = 1\nconst ifs = 2', 1, 2)).toBe(0)
   })
+
+  // self-demonstrating: redbar's own LANGUAGES table scored 3 phantom branches — a `for` inside
+  // a regex literal, an `&&` inside a shell string, a `for` inside a comment
+  it('ignores keywords inside regex literals, strings and comments', () => {
+    const src = [
+      'export const LANGUAGES = [',
+      '  { symbolPatterns: [/^\\s*impl\\s+(?:\\w+\\s+for\\s+)?(\\w+)/] },',
+      "  { coverageCommand: 'go test ./... && gocover-cobertura < c.out > c.xml' },",
+      '  // maven has no install-by-command: init prints the block for the human to paste',
+      '  { install: `npm install -D ${libs.join(" ")}` }, // while we are at it',
+      '  { doc: "returns null if the case is unknown" },',
+      ']',
+    ].join('\n')
+    expect(countBranches(src, 1, 7)).toBe(0)
+  })
+
+  it('still counts the branches in real code around the noise', () => {
+    const src = [
+      'function divide(a, b) {',
+      '  // guard: throw if b is zero',
+      '  if (b === 0) throw new Error("cannot divide, if b is 0")',
+      '  return a / b // plain division, not a regex',
+      '}',
+    ].join('\n')
+    expect(countBranches(src, 1, 5)).toBe(1) // the real `if`, nothing else
+  })
+
+  it('ignores keywords inside a block comment', () => {
+    const src = ['/**', ' * Loops for each item and returns null if empty.', ' */', 'const x = 1'].join(
+      '\n',
+    )
+    expect(countBranches(src, 1, 4)).toBe(0)
+  })
+
+  it('ignores keywords inside a python docstring and a hash comment', () => {
+    const src = [
+      'def divide(a, b):',
+      '    """Divide a by b.',
+      '',
+      '    Raises if b is zero, loops for nothing.',
+      '    """',
+      '    # returns None if b is zero',
+      '    if b == 0:',
+      '        return None',
+      '    return a / b',
+    ].join('\n')
+    expect(countBranches(src, 1, 9)).toBe(1)
+  })
 })

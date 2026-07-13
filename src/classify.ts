@@ -1,3 +1,4 @@
+import { stripNonCode } from './code.js'
 import type { TestKind } from './types.js'
 
 // ponytail: a path + content heuristic, not a classifier. The cost of being wrong is a test
@@ -21,15 +22,18 @@ export function classify(file: string, source: string): TestKind {
 }
 
 // \b keeps `notify` and `ifs` from counting as `if`.
-// ponytail: the ternary `?` is deliberately NOT counted. In TS it also spells an optional
-// type (`foo?: string`), optional chaining, and every regex quantifier — running this over
-// redbar's own source scored a static data table at 21 branches, which put noise at the top
-// of the ranking. A missed ternary costs less than a lie in the first row.
+// ponytail: the ternary `?` is deliberately NOT counted — in TS it also spells an optional type
+// (`foo?: string`) and optional chaining, neither of which is a branch. A missed ternary costs
+// less than a lie in the first row.
 const BRANCH = /\b(if|for|while|case|catch|elif|switch)\b|&&|\|\|/g
 
-/** Branches within lines [start, end] — the criticality proxy. Counting, not opinion. */
+/**
+ * Branches within lines [start, end] — the criticality proxy. Counting, not opinion.
+ * Runs over CODE only: a keyword inside a comment, a string or a regex literal is not a branch
+ * (see stripNonCode for the remaining ceiling).
+ */
 export function countBranches(source: string, start: number, end: number): number {
-  const body = source
+  const body = stripNonCode(source)
     .split('\n')
     .slice(start - 1, end)
     .join('\n')

@@ -44,4 +44,32 @@ describe('parseLcov', () => {
   it('returns an empty map for empty input', () => {
     expect(parseLcov('').size).toBe(0)
   })
+
+  // `cat packages/*/coverage/lcov.info > lcov.info` — the standard monorepo move. The same file
+  // shows up in several records; overwriting FABRICATES gaps by dropping the earlier hits.
+  it('merges repeated SF: records by union — a line covered anywhere is covered', () => {
+    const text = [
+      'SF:src/a.ts',
+      'DA:1,1',
+      'DA:2,1',
+      'DA:3,0',
+      'end_of_record',
+      'SF:src/a.ts',
+      'DA:1,0',
+      'DA:2,0',
+      'DA:3,1',
+      'end_of_record',
+    ].join('\n')
+    expect(parseLcov(text).get('src/a.ts')).toEqual({
+      file: 'src/a.ts',
+      covered: [1, 2, 3],
+      uncovered: [],
+    })
+  })
+
+  it('strips the root only at a path boundary — a sibling directory is not a prefix', () => {
+    const cov = parseLcov('SF:/home/user/proj-ui/src/a.ts\nDA:1,0\nend_of_record\n', ROOT)
+    expect(cov.has('-ui/src/a.ts')).toBe(false)
+    expect(cov.has('home/user/proj-ui/src/a.ts')).toBe(true)
+  })
 })

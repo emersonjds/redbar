@@ -1,29 +1,30 @@
-import type { Coverage, FileCoverage } from '../types.js'
+import type { Coverage } from '../types.js'
+import { addLine, type LineHits, toCoverage } from './merge.js'
 
 /** `SF:` can be absolute (cargo-llvm-cov) or relative; `root`, when given, is stripped. */
 export function parseLcov(text: string, root = ''): Coverage {
-  const cov: Coverage = new Map()
-  let current: FileCoverage | null = null
+  const acc: LineHits = new Map()
+  let current: string | null = null
 
   for (const raw of text.split('\n')) {
     const line = raw.trim()
     if (line.startsWith('SF:')) {
-      current = { file: normalize(line.slice(3), root), covered: [], uncovered: [] }
-      cov.set(current.file, current)
+      current = normalize(line.slice(3), root)
     } else if (line.startsWith('DA:') && current) {
       const [nr, hits] = line.slice(3).split(',')
       const n = Number(nr)
       if (!Number.isInteger(n)) continue
-      ;(Number(hits) > 0 ? current.covered : current.uncovered).push(n)
+      addLine(acc, current, n, Number(hits) > 0)
     } else if (line === 'end_of_record') {
       current = null
     }
   }
-  return cov
+  return toCoverage(acc)
 }
 
 function normalize(file: string, root: string): string {
-  let p = file.replaceAll('\\', '/')
-  if (root && p.startsWith(root)) p = p.slice(root.length)
-  return p.replace(/^\.?\//, '')
+  const p = file.replaceAll('\\', '/')
+  // the trailing `/` is the path boundary: root `/home/u/proj` must not eat `/home/u/proj-ui/…`
+  const prefix = root ? `${root.replace(/\/$/, '')}/` : ''
+  return (prefix && p.startsWith(prefix) ? p.slice(prefix.length) : p).replace(/^\.?\//, '')
 }

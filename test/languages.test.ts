@@ -18,14 +18,21 @@ describe('language registry', () => {
     }
   })
 
-  it('every language declares markers, source extensions, and libs for all 3 kinds', () => {
+  it('every language declares markers, source extensions, and the language-wide libs', () => {
     for (const lang of LANGUAGES) {
       expect(lang.markers.length, `${lang.id} has no markers`).toBeGreaterThan(0)
       expect(lang.sourceExtensions.length, `${lang.id} has no sourceExtensions`).toBeGreaterThan(0)
-      expect(lang.testLibs.unit, `${lang.id} has no unit libs`).toBeDefined()
       expect(lang.testLibs.integration, `${lang.id} has no integration libs`).toBeDefined()
       expect(lang.testLibs.e2e, `${lang.id} has no e2e libs`).toBeDefined()
       expect(lang.symbolPatterns.length, `${lang.id} has no symbolPatterns`).toBeGreaterThan(0)
+    }
+  })
+
+  // unit libs belong to the runner, never to the language — a jest project told to install
+  // vitest would follow the advice and break its own setup
+  it('no language claims a unit-test lib — that is the runner job', () => {
+    for (const lang of LANGUAGES) {
+      expect(lang.testLibs, `${lang.id} still owns unit libs`).not.toHaveProperty('unit')
     }
   })
 

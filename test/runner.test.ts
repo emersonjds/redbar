@@ -2,7 +2,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { byId } from '../src/languages.js'
+import { LANGUAGES, byId } from '../src/languages.js'
 import { selectRunner } from '../src/runner.js'
 
 const ts = byId('ts')!
@@ -72,5 +72,30 @@ describe('selectRunner', () => {
     // without collectCoverageFrom, jest only reports files a test imported — the untested
     // file never lands in the report at all
     expect(selectRunner(dir, ts).coverageCommand).toContain('collectCoverageFrom')
+  })
+})
+
+describe('runner unit libs', () => {
+  // found by running `redbar init` on a real jest project: it proposed installing vitest.
+  // Following that advice would have broken the project's own test setup.
+  it('never proposes vitest to a jest project', () => {
+    const dir = repo({ 'package.json': JSON.stringify({ devDependencies: { jest: '^29' } }) })
+    const runner = selectRunner(dir, ts)
+
+    expect(runner.unitLibs).toContain('jest')
+    expect(runner.unitLibs).not.toContain('vitest')
+  })
+
+  it('proposes vitest to a vitest project', () => {
+    const dir = repo({ 'package.json': JSON.stringify({ devDependencies: { vitest: '^4' } }) })
+    expect(selectRunner(dir, ts).unitLibs).toContain('vitest')
+  })
+
+  it('every runner declares its own unit libs', () => {
+    for (const lang of LANGUAGES) {
+      for (const r of lang.runners) {
+        expect(r.unitLibs.length, `${lang.id}/${r.name} has no unitLibs`).toBeGreaterThan(0)
+      }
+    }
   })
 })

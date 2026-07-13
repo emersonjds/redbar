@@ -13,6 +13,12 @@ export type Runner = {
   coverageCommand: string
   /** where that command drops the report, relative to root */
   reportPath: string
+  /**
+   * The unit-test libraries THIS runner needs — not the language's.
+   * A jest project must never be told to install vitest: following that advice breaks its setup.
+   * The runner owns its libs for the same reason it owns its command.
+   */
+  unitLibs: string[]
 }
 
 export type Language = {
@@ -42,8 +48,12 @@ export type Language = {
   testFilePattern: RegExp
   /** matches an exported/public symbol declaration; group 1 = the name */
   symbolPatterns: RegExp[]
-  /** test libs `init` proposes — the human approves, the tool never installs */
-  testLibs: Record<TestKind, string[]>
+  /**
+   * Test libs `init` proposes for the layers that are language-wide. `unit` is NOT here:
+   * it belongs to the runner (jest vs vitest), and putting it here is what made init tell a
+   * jest project to install vitest. The human approves; the tool never installs.
+   */
+  testLibs: Record<Exclude<TestKind, 'unit'>, string[]>
   installCommand: (libs: string[]) => string
   /** does the agent write tests in this language? false = inspect only */
   canFix: boolean
@@ -64,6 +74,7 @@ export const LANGUAGES: Language[] = [
         detect: /\[package\]/,
         coverageCommand: 'cargo llvm-cov --lcov --output-path lcov.info',
         reportPath: 'lcov.info',
+        unitLibs: ['cargo-llvm-cov'],
       },
     ],
     sourceExtensions: ['.rs'],
@@ -75,7 +86,6 @@ export const LANGUAGES: Language[] = [
       /^\s*impl\s+(?:\w+\s+for\s+)?(\w+)/,
     ],
     testLibs: {
-      unit: ['cargo-llvm-cov'],
       integration: ['tokio', 'reqwest'],
       e2e: ['@playwright/test'],
     },
@@ -94,13 +104,13 @@ export const LANGUAGES: Language[] = [
         coverageCommand:
           'go test ./... -coverprofile=coverage.out && gocover-cobertura < coverage.out > coverage.xml',
         reportPath: 'coverage.xml',
+        unitLibs: ['github.com/stretchr/testify'],
       },
     ],
     sourceExtensions: ['.go'],
     testFilePattern: /_test\.go$/,
     symbolPatterns: [/^func\s+(?:\([^)]*\)\s+)?([A-Z]\w*)/, /^type\s+([A-Z]\w*)/],
     testLibs: {
-      unit: ['github.com/stretchr/testify'],
       integration: ['github.com/testcontainers/testcontainers-go'],
       e2e: ['@playwright/test'],
     },
@@ -118,12 +128,14 @@ export const LANGUAGES: Language[] = [
         detect: /plugins\s*\{|apply\s+plugin/,
         coverageCommand: './gradlew test jacocoTestReport',
         reportPath: 'build/reports/jacoco/test/jacocoTestReport.xml',
+        unitLibs: ['org.junit.jupiter:junit-jupiter', 'org.mockito:mockito-core'],
       },
       {
         name: 'maven',
         detect: /<project[\s>]/,
         coverageCommand: 'mvn -q test jacoco:report',
         reportPath: 'target/site/jacoco/jacoco.xml',
+        unitLibs: ['org.junit.jupiter:junit-jupiter', 'org.mockito:mockito-core'],
       },
     ],
     sourceRoots: ['src/main/java', 'src/main/kotlin', 'src/main/scala'],
@@ -134,7 +146,6 @@ export const LANGUAGES: Language[] = [
       /^\s*public\s+(?:static\s+|final\s+|synchronized\s+|abstract\s+)*[\w<>\[\].]+\s+(\w+)\s*\(/,
     ],
     testLibs: {
-      unit: ['org.junit.jupiter:junit-jupiter', 'org.mockito:mockito-core'],
       integration: [
         'org.springframework.boot:spring-boot-starter-test',
         'org.testcontainers:junit-jupiter',
@@ -159,6 +170,7 @@ export const LANGUAGES: Language[] = [
         detect: /"phpunit\/phpunit"/,
         coverageCommand: 'vendor/bin/phpunit --coverage-cobertura coverage.xml',
         reportPath: 'coverage.xml',
+        unitLibs: ['phpunit/phpunit'],
       },
     ],
     sourceExtensions: ['.php'],
@@ -168,7 +180,6 @@ export const LANGUAGES: Language[] = [
       /^\s*public\s+(?:static\s+)?function\s+(\w+)/,
     ],
     testLibs: {
-      unit: ['phpunit/phpunit'],
       integration: ['phpunit/phpunit', 'guzzlehttp/guzzle'],
       e2e: ['@playwright/test'],
     },
@@ -186,13 +197,13 @@ export const LANGUAGES: Language[] = [
         detect: /pytest/,
         coverageCommand: 'pytest --cov --cov-report=xml',
         reportPath: 'coverage.xml',
+        unitLibs: ['pytest', 'pytest-cov'],
       },
     ],
     sourceExtensions: ['.py'],
     testFilePattern: /(^|\/)tests?\/|(^|\/)test_[^\/]+\.py$|_test\.py$/,
     symbolPatterns: [/^def\s+(\w+)/, /^class\s+(\w+)/],
     testLibs: {
-      unit: ['pytest', 'pytest-cov'],
       integration: ['pytest', 'httpx', 'testcontainers'],
       e2e: ['pytest-playwright'],
     },
@@ -213,6 +224,7 @@ export const LANGUAGES: Language[] = [
         // cannot fix the error
         coverageCommand: 'npx vitest run --coverage --coverage.reporter=lcov',
         reportPath: 'coverage/lcov.info',
+        unitLibs: ['vitest', '@vitest/coverage-v8'],
       },
       {
         name: 'jest',
@@ -224,6 +236,7 @@ export const LANGUAGES: Language[] = [
         coverageCommand:
           "npx jest --coverage --coverageReporters=lcov --collectCoverageFrom='src/**/*.{ts,tsx,js,jsx}'",
         reportPath: 'coverage/lcov.info',
+        unitLibs: ['jest'],
       },
     ],
     sourceExtensions: ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'],
@@ -242,8 +255,7 @@ export const LANGUAGES: Language[] = [
       /^(?:export\s+)?(?:const|let)\s+(\w+)/,
     ],
     testLibs: {
-      unit: ['vitest', '@vitest/coverage-v8'],
-      integration: ['vitest', 'supertest'],
+      integration: ['supertest'],
       e2e: ['@playwright/test'],
     },
     installCommand: (libs) => `npm install -D ${libs.join(' ')}`,

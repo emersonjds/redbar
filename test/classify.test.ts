@@ -56,6 +56,18 @@ describe('countBranches', () => {
     expect(countBranches(src, 4, 8)).toBe(3) // divide: if, if, &&
   })
 
+  // found by running redbar on redbar: a static data table scored 21 branches, because
+  // every `?` in a regex quantifier and every optional type was counted as one
+  it('does not count regex quantifiers or optional types as branches', () => {
+    const dataTable = [
+      'export const LANGUAGES = [',
+      '  { id: "ts", symbolPatterns: [/^export\\s+(?:async\\s+)?function\\s+(\\w+)/] },',
+      '  { id: "go", reportPath: "coverage.xml", canFix: false },',
+      ']',
+    ].join('\n')
+    expect(countBranches(dataTable, 1, 4)).toBe(0)
+  })
+
   it('does not count the word if inside an identifier', () => {
     expect(countBranches('const notify = 1\nconst ifs = 2', 1, 2)).toBe(0)
   })

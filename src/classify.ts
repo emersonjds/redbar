@@ -20,8 +20,12 @@ export function classify(file: string, source: string): TestKind {
   return 'unit'
 }
 
-// \b keeps `notify` and `ifs` from counting as `if`
-const BRANCH = /\b(if|for|while|case|catch|elif)\b|&&|\|\||\?[^.]/g
+// \b keeps `notify` and `ifs` from counting as `if`.
+// ponytail: the ternary `?` is deliberately NOT counted. In TS it also spells an optional
+// type (`foo?: string`), optional chaining, and every regex quantifier — running this over
+// redbar's own source scored a static data table at 21 branches, which put noise at the top
+// of the ranking. A missed ternary costs less than a lie in the first row.
+const BRANCH = /\b(if|for|while|case|catch|elif|switch)\b|&&|\|\|/g
 
 /** Branches within lines [start, end] — the criticality proxy. Counting, not opinion. */
 export function countBranches(source: string, start: number, end: number): number {

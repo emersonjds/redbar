@@ -24,9 +24,29 @@ describe('extractSymbols ts', () => {
 
   it('finds exported functions and consts with their ranges', () => {
     expect(extractSymbols(src, ts)).toEqual([
-      { name: 'add', start: 3, end: 6 },
+      { name: 'add', start: 3, end: 5 },
       { name: 'divide', start: 7, end: 10 },
     ])
+  })
+
+  // the last symbol used to end at EOF and swallow every trailing line — a big data table after
+  // the last function had its branches billed to that function
+  it('the last symbol does not swallow the trailing code after it', () => {
+    const trailing = [
+      'export function add(a: number, b: number) {', // 1
+      '  return a + b', //                              2
+      '}', //                                           3
+      '', //                                            4
+      'const TABLE = {', //                             5
+      '  a: /^if\\s+for\\s+while/,', //                 6
+      '  b: 2,', //                                     7
+      '}', //                                           8
+    ].join('\n')
+    expect(extractSymbols(trailing, ts)).toEqual([{ name: 'add', start: 1, end: 3 }])
+  })
+
+  it('does not invent a symbol out of a commented-out declaration', () => {
+    expect(extractSymbols('// export function ghost() {}\nconst x = 1', ts)).toEqual([])
   })
 
   it('maps a line to the symbol containing it', () => {
@@ -66,6 +86,14 @@ describe('extractSymbols python', () => {
   it('finds top-level defs', () => {
     expect(symbolAt(extractSymbols(src, python), 5)?.name).toBe('divide')
   })
+
+  // no braces to count: the block ends where the indentation drops back to the def's own level
+  it('an indented block ends where the indentation drops back', () => {
+    const withTable = ['def add(a, b):', '    return a + b', '', 'TABLE = {', '    "x": 1,', '}'].join(
+      '\n',
+    )
+    expect(extractSymbols(withTable, python)).toEqual([{ name: 'add', start: 1, end: 2 }])
+  })
 })
 
 describe('extractSymbols rust', () => {
@@ -82,6 +110,28 @@ describe('extractSymbols rust', () => {
 
   it('finds public fns', () => {
     expect(symbolAt(extractSymbols(src, rust), 6)?.name).toBe('divide')
+  })
+
+  it('two impl blocks of the same type are two symbols with their own spans', () => {
+    const impls = [
+      'pub struct Foo;', //                    1
+      'impl Foo {', //                         2
+      '    pub fn a(&self) {}', //             3
+      '}', //                                  4
+      'impl Foo {', //                         5
+      '    pub fn b(&self) -> i32 {', //       6
+      '        if true { 1 } else { 0 }', //   7
+      '    }', //                              8
+      '}', //                                  9
+    ].join('\n')
+    const spans = extractSymbols(impls, rust)
+      .filter((s) => s.name === 'Foo')
+      .map((s) => [s.start, s.end])
+    expect(spans).toEqual([
+      [1, 1],
+      [2, 4],
+      [5, 9],
+    ])
   })
 })
 

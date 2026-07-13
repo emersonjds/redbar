@@ -18,14 +18,28 @@ describe('language registry', () => {
     }
   })
 
-  it('every language declares markers, a coverage command, and libs for all 3 kinds', () => {
+  it('every language declares markers, source extensions, and libs for all 3 kinds', () => {
     for (const lang of LANGUAGES) {
       expect(lang.markers.length, `${lang.id} has no markers`).toBeGreaterThan(0)
-      expect(lang.coverageCommand, `${lang.id} has no coverageCommand`).toBeTruthy()
+      expect(lang.sourceExtensions.length, `${lang.id} has no sourceExtensions`).toBeGreaterThan(0)
       expect(lang.testLibs.unit, `${lang.id} has no unit libs`).toBeDefined()
       expect(lang.testLibs.integration, `${lang.id} has no integration libs`).toBeDefined()
       expect(lang.testLibs.e2e, `${lang.id} has no e2e libs`).toBeDefined()
       expect(lang.symbolPatterns.length, `${lang.id} has no symbolPatterns`).toBeGreaterThan(0)
+    }
+  })
+
+  // a runner missing either half is unusable: the command that builds the report and the path
+  // it lands at have to travel together, or redbar waits at the wrong place
+  it('every language has at least one runner, and every runner is complete', () => {
+    for (const lang of LANGUAGES) {
+      expect(lang.runners.length, `${lang.id} has no runners`).toBeGreaterThan(0)
+      for (const runner of lang.runners) {
+        const where = `${lang.id}/${runner.name}`
+        expect(runner.coverageCommand, `${where} has no coverageCommand`).toBeTruthy()
+        expect(runner.reportPath, `${where} has no reportPath`).toBeTruthy()
+        expect(runner.detect, `${where} has no detect pattern`).toBeInstanceOf(RegExp)
+      }
     }
   })
 

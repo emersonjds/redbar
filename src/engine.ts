@@ -6,27 +6,31 @@ import { parseLcov } from './coverage/lcov.js'
 import { detect } from './detect.js'
 import { findGaps } from './gap.js'
 import { changedLines, detectBase } from './git.js'
-import type { Language } from './languages.js'
+import { selectRunner } from './runner.js'
+import type { Language, Runner } from './languages.js'
 import type { ChangedLines, Coverage, CoverageFormat, Gap } from './types.js'
 
-export type Inspection = { language: Language; base: string; gaps: Gap[] }
+export type Inspection = { language: Language; runner: Runner; base: string; gaps: Gap[] }
 
 export type InspectOptions = {
   base?: string
   /** inject the diff instead of shelling out to git — used by the fixtures, which are not repos */
   changed?: ChangedLines
-  /** override the report path declared in the registry */
+  /** override the report path the runner declares */
   reportPath?: string
 }
 
 export function inspect(root: string, opts: InspectOptions = {}): Inspection {
   const language = detect(root)
-  const reportPath = opts.reportPath ?? language.reportPath
+  const runner = selectRunner(root, language)
+  const reportPath = opts.reportPath ?? runner.reportPath
   const full = join(root, reportPath)
 
   if (!existsSync(full)) {
+    // the command must come from the RUNNER, not the language: telling a jest project to run
+    // vitest prints a command that can never produce the report we are waiting for
     throw new Error(
-      `redbar: coverage report not found at ${reportPath}. Run: ${language.coverageCommand}`,
+      `redbar: coverage report not found at ${reportPath}. Run: ${runner.coverageCommand}`,
     )
   }
 
@@ -40,7 +44,7 @@ export function inspect(root: string, opts: InspectOptions = {}): Inspection {
     return existsSync(p) ? readFileSync(p, 'utf8') : null
   }
 
-  return { language, base, gaps: findGaps(coverage, changed, language, readSource) }
+  return { language, runner, base, gaps: findGaps(coverage, changed, language, readSource) }
 }
 
 function parse(text: string, language: Language, root: string): Coverage {

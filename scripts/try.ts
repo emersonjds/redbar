@@ -7,9 +7,10 @@ if (!root) {
   process.exit(1)
 }
 
-const { language, base: usedBase, gaps } = inspect(root, base ? { base } : {})
+const { language, runner, base: usedBase, gaps } = inspect(root, base ? { base } : {})
 
 console.log(`language: ${language.name}`)
+console.log(`runner:   ${runner.name}`)
 console.log(`base:     ${usedBase}`)
 console.log(`gaps:     ${gaps.length}\n`)
 

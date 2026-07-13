@@ -17,6 +17,15 @@ export type Language = {
    * that exists on disk.
    */
   sourceRoots?: string[]
+  /**
+   * Extensions holding product code. A changed file with one of these that is ABSENT from the
+   * coverage report is not "uninstrumented" — it is a file no test imports, i.e. the largest
+   * gap there is. Jest and pytest only instrument what a test imported, so the untested file
+   * never shows up in the report at all.
+   */
+  sourceExtensions: string[]
+  /** test/spec/fixture files — changed, but never themselves a gap */
+  testFilePattern: RegExp
   /** matches an exported/public symbol declaration; group 1 = the name */
   symbolPatterns: RegExp[]
   /** test libs `init` proposes — the human approves, the tool never installs */
@@ -37,6 +46,8 @@ export const LANGUAGES: Language[] = [
     format: 'lcov',
     reportPath: 'lcov.info',
     coverageCommand: 'cargo llvm-cov --lcov --output-path lcov.info',
+    sourceExtensions: ['.rs'],
+    testFilePattern: /(^|\/)tests\/|_test\.rs$/,
     symbolPatterns: [
       /^\s*pub\s+(?:async\s+)?fn\s+(\w+)/,
       /^\s*pub\s+struct\s+(\w+)/,
@@ -60,6 +71,8 @@ export const LANGUAGES: Language[] = [
     coverageCommand:
       'go test ./... -coverprofile=coverage.out && gocover-cobertura < coverage.out > coverage.xml',
     // in Go, exported = leading uppercase. includes methods with a receiver.
+    sourceExtensions: ['.go'],
+    testFilePattern: /_test\.go$/,
     symbolPatterns: [/^func\s+(?:\([^)]*\)\s+)?([A-Z]\w*)/, /^type\s+([A-Z]\w*)/],
     testLibs: {
       unit: ['github.com/stretchr/testify'],
@@ -77,6 +90,8 @@ export const LANGUAGES: Language[] = [
     reportPath: 'target/site/jacoco/jacoco.xml',
     coverageCommand: 'mvn -q test jacoco:report',
     sourceRoots: ['src/main/java', 'src/main/kotlin', 'src/main/scala'],
+    sourceExtensions: ['.java', '.kt', '.scala'],
+    testFilePattern: /(^|\/)src\/test\/|Tests?\.(java|kt|scala)$/,
     symbolPatterns: [
       /^\s*public\s+(?:abstract\s+|final\s+)?class\s+(\w+)/,
       /^\s*public\s+(?:static\s+|final\s+|synchronized\s+|abstract\s+)*[\w<>\[\].]+\s+(\w+)\s*\(/,
@@ -103,6 +118,8 @@ export const LANGUAGES: Language[] = [
     format: 'cobertura',
     reportPath: 'coverage.xml',
     coverageCommand: 'vendor/bin/phpunit --coverage-cobertura coverage.xml',
+    sourceExtensions: ['.php'],
+    testFilePattern: /(^|\/)tests?\/|Test\.php$/i,
     symbolPatterns: [
       /^\s*(?:final\s+|abstract\s+)?class\s+(\w+)/,
       /^\s*public\s+(?:static\s+)?function\s+(\w+)/,
@@ -123,6 +140,8 @@ export const LANGUAGES: Language[] = [
     reportPath: 'coverage.xml',
     coverageCommand: 'pytest --cov --cov-report=xml',
     // top-level (column 0): an indented method inherits the name of its enclosing class
+    sourceExtensions: ['.py'],
+    testFilePattern: /(^|\/)tests?\/|(^|\/)test_[^\/]+\.py$|_test\.py$/,
     symbolPatterns: [/^def\s+(\w+)/, /^class\s+(\w+)/],
     testLibs: {
       unit: ['pytest', 'pytest-cov'],
@@ -142,10 +161,16 @@ export const LANGUAGES: Language[] = [
     // plain `--coverage` writes clover/html and leaves reportPath missing. Without this flag
     // the error tells the user to run a command that cannot fix the error.
     coverageCommand: 'npx vitest run --coverage --coverage.reporter=lcov',
+    sourceExtensions: ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'],
+    testFilePattern: /(^|\/)(__tests__|__mocks__|e2e)\/|\.(test|spec)\.[jt]sx?$|\.setup\.[jt]sx?$/,
+    // A top-level declaration is one at column 0 — `export` is NOT required. Real React code
+    // writes `const Button = (...)` and exports it at the bottom with `export default Button`;
+    // demanding the keyword here left every component in a real app named "(no symbol)".
     symbolPatterns: [
-      /^export\s+(?:async\s+)?function\s+(\w+)/,
-      /^export\s+(?:abstract\s+)?class\s+(\w+)/,
-      /^export\s+(?:const|let)\s+(\w+)/,
+      /^export\s+default\s+(?:async\s+)?function\s+(\w+)/,
+      /^(?:export\s+)?(?:async\s+)?function\s+(\w+)/,
+      /^(?:export\s+)?(?:abstract\s+)?class\s+(\w+)/,
+      /^(?:export\s+)?(?:const|let)\s+(\w+)/,
     ],
     testLibs: {
       unit: ['vitest', '@vitest/coverage-v8'],

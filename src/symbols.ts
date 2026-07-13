@@ -24,11 +24,15 @@ export function extractSymbols(source: string, lang: Language): SourceSymbol[] {
   return symbols
 }
 
-export function symbolAt(symbols: SourceSymbol[], line: number): string | null {
+/**
+ * The symbol holding `line`, as an object: two symbols can share a name (java overloads, several
+ * `impl Foo` blocks, a method in two classes) and the caller must be able to tell them apart.
+ */
+export function symbolAt(symbols: SourceSymbol[], line: number): SourceSymbol | null {
   // backwards: the innermost symbol (the method) beats the class enclosing it
   for (let i = symbols.length - 1; i >= 0; i--) {
     const s = symbols[i]!
-    if (line >= s.start && line <= s.end) return s.name
+    if (line >= s.start && line <= s.end) return s
   }
   return null
 }

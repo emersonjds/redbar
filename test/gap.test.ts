@@ -4,6 +4,7 @@ import { byId } from '../src/languages.js'
 import type { ChangedLines, Coverage } from '../src/types.js'
 
 const ts = byId('ts')!
+const java = byId('java')!
 
 const SRC = [
   'export function add(a: number, b: number) {',     // 1
@@ -89,6 +90,40 @@ describe('findGaps', () => {
     const gaps = findGaps(coverage, changed, ts, () => 'const hidden = 1\n')
     expect(gaps[0]?.symbol).toBeNull()
     expect(gaps[0]?.fullyUncovered).toBe(false)
+  })
+
+  // overloads (java), several `impl Foo` blocks (rust), same-named methods in two classes:
+  // grouping by NAME picks the first symbol with that name, not the one holding the gap
+  it('attributes the gap to the overload that contains it, not the first of that name', () => {
+    const src = [
+      'package com.example;', //                             1
+      '', //                                                 2
+      'public class Mailer {', //                            3
+      '  public void send(String to) {', //                  4
+      '    System.out.println(to);', //                      5
+      '  }', //                                              6
+      '  public void send(String to, int retries) {', //     7
+      '    if (retries > 0 && to != null) {', //             8
+      '      for (int i = 0; i < retries; i++) send(to);', // 9
+      '    }', //                                            10
+      '  }', //                                              11
+      '}', //                                                12
+    ].join('\n')
+    const file = 'src/main/java/com/example/Mailer.java'
+    const coverage: Coverage = new Map([
+      [file, { file, covered: [4, 5], uncovered: [8, 9, 10] }],
+    ])
+    const changed: ChangedLines = new Map([[file, [8, 9, 10]]])
+
+    const gaps = findGaps(coverage, changed, java, () => src)
+    expect(gaps).toHaveLength(1)
+    expect(gaps[0]).toMatchObject({
+      symbol: 'send',
+      lines: [8, 9, 10],
+      fullyUncovered: true, // the 2-arg overload has no covered line — the 1-arg one does
+      branches: 3, // if, &&, for
+      score: 24, // 3 lines × 2 × (1 + 3)
+    })
   })
 
   it('a gap in a route is classified as e2e', () => {

@@ -31,8 +31,8 @@ describe('extractSymbols ts', () => {
 
   it('maps a line to the symbol containing it', () => {
     const symbols = extractSymbols(src, ts)
-    expect(symbolAt(symbols, 8)).toBe('divide')
-    expect(symbolAt(symbols, 4)).toBe('add')
+    expect(symbolAt(symbols, 8)?.name).toBe('divide')
+    expect(symbolAt(symbols, 4)?.name).toBe('add')
     expect(symbolAt(symbols, 1)).toBeNull()
   })
 })
@@ -54,7 +54,7 @@ describe('extractSymbols java', () => {
   it('the innermost method beats the class enclosing it', () => {
     const symbols = extractSymbols(src, java)
     expect(symbols.map((s) => s.name)).toEqual(['Calc', 'add', 'divide'])
-    expect(symbolAt(symbols, 8)).toBe('divide')
+    expect(symbolAt(symbols, 8)?.name).toBe('divide')
   })
 })
 
@@ -64,7 +64,7 @@ describe('extractSymbols python', () => {
   )
 
   it('finds top-level defs', () => {
-    expect(symbolAt(extractSymbols(src, python), 5)).toBe('divide')
+    expect(symbolAt(extractSymbols(src, python), 5)?.name).toBe('divide')
   })
 })
 
@@ -81,7 +81,7 @@ describe('extractSymbols rust', () => {
   ].join('\n')
 
   it('finds public fns', () => {
-    expect(symbolAt(extractSymbols(src, rust), 6)).toBe('divide')
+    expect(symbolAt(extractSymbols(src, rust), 6)?.name).toBe('divide')
   })
 })
 
@@ -99,6 +99,6 @@ describe('extractSymbols php', () => {
   ].join('\n')
 
   it('finds public methods', () => {
-    expect(symbolAt(extractSymbols(src, php), 7)).toBe('divide')
+    expect(symbolAt(extractSymbols(src, php), 7)?.name).toBe('divide')
   })
 })

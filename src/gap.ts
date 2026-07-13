@@ -26,17 +26,17 @@ export function findGaps(
     const covered = new Set(fc.covered)
     const kind = classify(file, source)
 
-    // group the gap lines by the symbol containing them
-    const bySymbol = new Map<string | null, number[]>()
+    // group by symbol IDENTITY, not by name: two symbols can share a name (overloads, several
+    // `impl Foo` blocks) and only the one that CONTAINS the line describes the gap
+    const bySymbol = new Map<SourceSymbol | null, number[]>()
     for (const line of gapLines) {
-      const name = symbolAt(symbols, line)
-      const acc = bySymbol.get(name) ?? []
+      const span = symbolAt(symbols, line)
+      const acc = bySymbol.get(span) ?? []
       acc.push(line)
-      bySymbol.set(name, acc)
+      bySymbol.set(span, acc)
     }
 
-    for (const [symbol, lines] of bySymbol) {
-      const span = symbols.find((s) => s.name === symbol)
+    for (const [span, lines] of bySymbol) {
       const fullyUncovered = span ? !hasCoveredLine(span, covered) : false
       const branches = span
         ? countBranches(source, span.start, span.end)
@@ -44,7 +44,7 @@ export function findGaps(
 
       gaps.push({
         file,
-        symbol,
+        symbol: span?.name ?? null,
         lines,
         fullyUncovered,
         branches,

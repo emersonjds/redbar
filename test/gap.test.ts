@@ -176,6 +176,36 @@ describe('findGaps', () => {
       ])
       expect(findGaps(new Map(), changed, ts, () => 'whatever')).toEqual([])
     })
+
+    // all of these showed up as "gaps" on a real React Native repo. A .d.ts emits no runtime
+    // and cannot be tested at all; build config is not product code. Noise in a to-do list.
+    it('does not turn type declarations or build config into a gap', () => {
+      const changed: ChangedLines = new Map([
+        ['src/types/assets.d.ts', [1]],
+        ['jest.resolver.js', [1, 9]],
+        ['metro.config.js', [1]],
+        ['vite.config.ts', [1]],
+        ['babel.config.js', [1]],
+      ])
+      expect(findGaps(new Map(), changed, ts, () => 'export const x = 1')).toEqual([])
+    })
+
+    it('still treats a real source file as a gap', () => {
+      // real React: declared without `export`, exported at the bottom
+      const src = [
+        'const Home = () => {', // 1
+        '  if (!user) return null', // 2
+        '  return <View />', // 3
+        '}', // 4
+        'export default Home', // 5
+      ].join('\n')
+      const changed: ChangedLines = new Map([['src/pages/Home/index.tsx', [1, 2, 3, 4]]])
+
+      const gaps = findGaps(new Map(), changed, ts, () => src)
+
+      expect(gaps).toHaveLength(1)
+      expect(gaps[0]).toMatchObject({ symbol: 'Home', fullyUncovered: true, branches: 1 })
+    })
   })
 
   // architectural invariant: a report that reshuffles between identical runs cannot be

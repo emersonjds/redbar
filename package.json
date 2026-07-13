@@ -1,14 +1,27 @@
 {
   "name": "redbar",
   "version": "0.1.0",
-  "description": "Finds the test coverage gaps in what you changed. No LLM in the analysis — just the coverage report and git.",
+  "description": "Spec-driven test agents for every layer. Math finds what you changed that nothing tests; agents write it — unit, integration, e2e — following your team's spec, not the model's.",
   "type": "module",
   "private": true,
   "license": "MIT",
   "author": "Emerson Silva",
-  "repository": { "type": "git", "url": "https://github.com/emersonjds/redbar.git" },
-  "keywords": ["testing", "coverage", "code-coverage", "test-gaps", "ci", "mcp"],
-  "engines": { "node": ">=20.11" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/emersonjds/redbar.git"
+  },
+  "keywords": [
+    "testing",
+    "code-coverage",
+    "test-generation",
+    "ai-agents",
+    "spec-driven",
+    "ci",
+    "mcp"
+  ],
+  "engines": {
+    "node": ">=20.11"
+  },
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit",

@@ -42,11 +42,17 @@ describe('extractSymbols ts', () => {
       '  b: 2,', //                                     7
       '}', //                                           8
     ].join('\n')
-    expect(extractSymbols(trailing, ts)).toEqual([{ name: 'add', start: 1, end: 3 }])
+    // `add` must end at its own closing brace, not swallow TABLE — TABLE is a top-level
+    // declaration in its own right (a module-scope const is a symbol, exported or not)
+    expect(extractSymbols(trailing, ts)).toEqual([
+      { name: 'add', start: 1, end: 3 },
+      { name: 'TABLE', start: 5, end: 8 },
+    ])
   })
 
   it('does not invent a symbol out of a commented-out declaration', () => {
-    expect(extractSymbols('// export function ghost() {}\nconst x = 1', ts)).toEqual([])
+    const symbols = extractSymbols('// export function ghost() {}\nconst x = 1', ts)
+    expect(symbols.map((s) => s.name)).toEqual(['x']) // `ghost` lives in a comment, not in code
   })
 
   it('maps a line to the symbol containing it', () => {

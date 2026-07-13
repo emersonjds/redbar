@@ -3,7 +3,6 @@
   "version": "0.1.0",
   "description": "Spec-driven test agents for every layer. Math finds what you changed that nothing tests; agents write it — unit, integration, e2e — following your team's spec, not the model's.",
   "type": "module",
-  "private": true,
   "license": "MIT",
   "author": "Emerson Silva",
   "repository": {
@@ -22,12 +21,22 @@
   "engines": {
     "node": ">=20.11"
   },
+  "bin": {
+    "redbar": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "coverage": "vitest run --coverage --coverage.reporter=lcov",
-    "try": "tsx scripts/try.ts"
+    "try": "tsx scripts/try.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "prepare": "npm run build",
+    "postbuild": "chmod +x dist/cli.js"
   },
+  "dependencies": {},
   "devDependencies": {
     "@types/node": "^26.1.1",
     "@vitest/coverage-v8": "^4.1.10",

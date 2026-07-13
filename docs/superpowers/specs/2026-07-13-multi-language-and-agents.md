@@ -53,14 +53,21 @@ type Language = {
 An agent is the composition of three things that already exist:
 
 ```
-prompt = conventions/<language>/<type>.md   ← the house standard (the real deliverable)
+prompt = conventions/<language>/<type>.md   ← the library's canonical standard
        + the gap (file, symbol, lines, source code)
        + the path of the test file to create
 ```
 
 The "Rust integration test specialist" **is** `conventions/rust/integration.md`. Swapping the specialist means editing a markdown file, not shipping a deploy. It is the same escape hatch as the LLM adapter, applied to testing knowledge.
 
-**The tool merely executes the conventions document.** The design already said this, and that's why this conversation with the team starts on day 1.
+> **SUPERSEDED — see `2026-07-13-conventions-are-library-standards.md`.**
+> This section originally called the conventions "the house standard (the real deliverable)",
+> to be authored by the team. That is reversed. The complaint is "everyone writes tests their
+> own way"; a house standard does not fix that, **it adds a seventh way**. The convention for a
+> layer is the **canonical standard of the library that runs it** — Playwright's best-practices
+> page, the Vitest docs, the pytest idiom — with an optional per-project override for genuinely
+> local choices. Nobody argues with the Playwright docs; everybody argues with the standard a
+> colleague invented last week.
 
 ## How the test type is decided
 

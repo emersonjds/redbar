@@ -227,7 +227,11 @@ export const LANGUAGES: Language[] = [
       },
     ],
     sourceExtensions: ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'],
-    testFilePattern: /(^|\/)(__tests__|__mocks__|e2e)\/|\.(test|spec)\.[jt]sx?$|\.setup\.[jt]sx?$/,
+    // `.d.ts` is not testable at all — it declares types and emits no runtime. Tooling files
+    // (jest.resolver.js, vite.config.ts, metro.config.js) are build config, not product code.
+    // Both showed up as "gaps" on a real repo, which is noise in a report meant to be a to-do list.
+    testFilePattern:
+      /(^|\/)(__tests__|__mocks__|e2e)\/|\.(test|spec)\.[jt]sx?$|\.d\.ts$|(^|\/)[\w.-]*\.(config|setup|resolver)\.[jt]sx?$|(^|\/)(jest|vitest|metro|babel|eslint)\.[\w.]*[jt]sx?$/,
     // A top-level declaration is one at column 0 — `export` is NOT required. Real React code
     // writes `const Button = (...)` and exports it at the bottom with `export default Button`;
     // demanding the keyword here left every component in a real app named "(no symbol)".

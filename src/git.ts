@@ -24,23 +24,33 @@ export function detectBase(root: string): string {
 }
 
 const HUNK = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/
-const NEWFILE = /^\+\+\+ (?:b\/)?(.+)$/
 
 /** Lines added/changed in `base...HEAD`, per file. */
 export function changedLines(root: string, base: string): ChangedLines {
-  const diff = git(root, ['diff', '-U0', `${base}...HEAD`])
+  // quotePath=false: without it git octal-escapes every non-ascii path ("b/caf\303\251.ts"),
+  // which then never matches a coverage key and drops the gap in silence
+  const diff = git(root, ['-c', 'core.quotePath=false', 'diff', '-U0', `${base}...HEAD`])
   const changed: ChangedLines = new Map()
   let file: string | null = null
+  let inHeader = false
 
   for (const line of diff.split('\n')) {
-    const newFile = NEWFILE.exec(line)
-    if (newFile) {
-      const path = newFile[1]!
-      file = path === '/dev/null' ? null : path
+    // in a -U0 diff every content line carries a +/-/space prefix, so `diff --git` at column 0
+    // is the one marker a file's CONTENT can never forge. Only inside a header is `+++ …` a path:
+    // a changed line reading `++ x` renders as `+++ x` and used to hijack the file pointer.
+    if (line.startsWith('diff --git ')) {
+      file = null
+      inHeader = true
+      continue
+    }
+    if (inHeader && line.startsWith('+++ ')) {
+      file = headerPath(line.slice(4))
       continue
     }
     const hunk = HUNK.exec(line)
-    if (!hunk || !file) continue
+    if (!hunk) continue
+    inHeader = false
+    if (!file) continue
 
     const start = Number(hunk[1])
     const count = hunk[2] === undefined ? 1 : Number(hunk[2])
@@ -51,4 +61,15 @@ export function changedLines(root: string, base: string): ChangedLines {
     changed.set(file, lines)
   }
   return changed
+}
+
+/** the `+++` side of a header: `b/src/a.ts`, `b/with space.ts\t`, `"b/weird\"name.ts"`, `/dev/null` */
+function headerPath(rest: string): string | null {
+  const tab = rest.indexOf('\t')
+  let path = tab >= 0 ? rest.slice(0, tab) : rest
+  if (path.startsWith('"') && path.endsWith('"')) {
+    path = path.slice(1, -1).replace(/\\(.)/g, '$1') // still quoted: a `"` or a control char
+  }
+  if (path === '/dev/null') return null // a deletion: nothing to cover
+  return path.startsWith('b/') ? path.slice(2) : path
 }

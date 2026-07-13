@@ -1,19 +1,24 @@
-import type { Coverage, FileCoverage } from '../types.js'
+import type { Coverage } from '../types.js'
+import { addLine, type LineHits, toCoverage } from './merge.js'
 
 // ponytail: same call as jacoco.ts — regex over machine-generated XML, zero dependency.
+// number and hits are read independently: XML attribute order is not guaranteed by any writer.
 const CLASS = /<class\s+[^>]*filename="([^"]*)"[^>]*>([\s\S]*?)<\/class>/g
-const LINE = /<line\s+number="(\d+)"\s+hits="(\d+)"/g
+const LINE = /<line\b[^>]*>/g
+const NUMBER = /\bnumber="(\d+)"/
+const HITS = /\bhits="(\d+)"/
 
 export function parseCobertura(xml: string): Coverage {
-  const cov: Coverage = new Map()
+  const acc: LineHits = new Map()
 
   for (const [, filename, body] of xml.matchAll(CLASS)) {
     const file = (filename ?? '').replaceAll('\\', '/').replace(/^\.?\//, '')
-    const fc: FileCoverage = { file, covered: [], uncovered: [] }
-    for (const [, nr, hits] of (body ?? '').matchAll(LINE)) {
-      ;(Number(hits) > 0 ? fc.covered : fc.uncovered).push(Number(nr))
+    for (const [tag] of (body ?? '').matchAll(LINE)) {
+      const nr = NUMBER.exec(tag)?.[1]
+      const hits = HITS.exec(tag)?.[1]
+      if (nr === undefined || hits === undefined) continue
+      addLine(acc, file, Number(nr), Number(hits) > 0)
     }
-    cov.set(file, fc)
   }
-  return cov
+  return toCoverage(acc)
 }

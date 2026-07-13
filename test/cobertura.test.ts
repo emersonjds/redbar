@@ -44,4 +44,42 @@ describe('parseCobertura', () => {
   it('returns an empty map for XML without a class', () => {
     expect(parseCobertura('<coverage/>').size).toBe(0)
   })
+
+  // a file legitimately appears in more than one <class>: PHP class + trait, coverlet's
+  // <>c__DisplayClass. Overwriting instead of merging loses covered AND uncovered lines.
+  it('merges the blocks when one file appears in several classes', () => {
+    const xml = `<coverage>
+      <class filename="src/Calc.php" name="Calc">
+        <lines><line number="5" hits="1"/><line number="6" hits="1"/></lines>
+      </class>
+      <class filename="src/Calc.php" name="Calc_trait">
+        <lines><line number="20" hits="0"/><line number="21" hits="0"/></lines>
+      </class>
+    </coverage>`
+    expect(parseCobertura(xml).get('src/Calc.php')).toEqual({
+      file: 'src/Calc.php',
+      covered: [5, 6],
+      uncovered: [20, 21],
+    })
+  })
+
+  it('a line covered in any block is covered — never in both lists', () => {
+    const xml = `<coverage>
+      <class filename="src/Calc.php"><lines><line number="5" hits="0"/></lines></class>
+      <class filename="src/Calc.php"><lines><line number="5" hits="3"/></lines></class>
+    </coverage>`
+    expect(parseCobertura(xml).get('src/Calc.php')).toEqual({
+      file: 'src/Calc.php',
+      covered: [5],
+      uncovered: [],
+    })
+  })
+
+  // XML attribute order is not guaranteed by any writer
+  it('reads number and hits in either attribute order', () => {
+    const xml = `<coverage>
+      <class filename="a.py"><lines><line hits="0" number="9"/></lines></class>
+    </coverage>`
+    expect(parseCobertura(xml).get('a.py')).toEqual({ file: 'a.py', covered: [], uncovered: [9] })
+  })
 })

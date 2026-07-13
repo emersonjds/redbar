@@ -2,11 +2,11 @@
 
 # redbar
 
-### Test gaps found by math. Filled by AI.
+### Spec-driven test agents for every layer.
 
-**The coverage score for what you actually changed — and the agent that writes the missing tests, in your house style.**
+**Math finds what you changed that nothing tests. Agents write it — unit, integration, e2e — following your team's spec, not the model's house style.**
 
-*Not another coverage percentage. redbar reads the coverage report your project already produces, crosses it with `git diff`, and tells you exactly which symbols you touched that no test executes — ranked by how dangerous they are. **No model gets a say in that number.** Then it hands the list to the AI agent you already have, along with your team's testing conventions, and lets it write the tests.*
+*Not another coverage percentage. redbar reads the coverage report your project already produces, crosses it with `git diff`, and names the exact symbols you touched that no test executes — ranked by how dangerous they are. **No model gets a say in that number.** Then it hands each gap to an agent along with the convention for that layer, and the test comes back written the way your team writes tests.*
 
 [![ci](https://github.com/emersonjds/redbar/actions/workflows/ci.yml/badge.svg)](https://github.com/emersonjds/redbar/actions/workflows/ci.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -82,16 +82,55 @@ This is not purism. It is the source of the number's authority. A wrong number f
 
 Only the *writing* of a test touches an agent, and it does so through a small adapter.
 
-### Two halves, and only one of them is AI
+### Two halves, and only one of them is a model
 
 This is the shape of the whole tool, and the reason the tagline reads the way it does:
 
 | | Who does it | Why |
 |---|---|---|
 | **Finding the gaps** | The compiler and git. **Zero LLM.** | A number you can audit, that comes out the same twice. |
-| **Writing the tests** | The AI agent **you already have** — Claude Code, Codex, or Copilot. | Writing a good test is judgment. That is what models are for. |
+| **Writing the tests** | Agents — Claude Code, Codex, or Copilot — **reading your spec**. | Writing a good test is judgment. That is what models are for. |
 
-Getting this backwards is how tools end up asking a model to guess at coverage. redbar asks a model to do the one thing a model is actually good at, and nothing else.
+Getting this backwards is how tools end up asking a model to *guess* at coverage. redbar asks a model to do the one thing a model is actually good at, and nothing else.
+
+### Spec-driven: the specialist agent **is** a markdown file
+
+Here is the part most AI testing tools get wrong. They hand the model a file and ask for tests. What comes back is a test in **the model's** house style — the style it saw most on GitHub — which is not your team's style, and which your reviewer will reject.
+
+So redbar never asks an agent to invent a standard. It hands it yours:
+
+```
+prompt = conventions/<language>/<layer>.md   ← your team's testing standard
+       + the gap (file, symbol, uncovered lines, branches)
+       + the source
+       + one instruction: write exactly this test file, change nothing else
+```
+
+**The "senior specialist in Rust integration testing" *is* the file `conventions/rust/integration.md`.** There is no fleet of 30 hand-tuned prompts to maintain. Swapping the specialist means editing a markdown file — no release, no deploy.
+
+Every convention answers the same five questions, so a human can diff two languages' standards side by side:
+
+1. Where the test file lives
+2. What one test looks like (a real, copy-pasteable example)
+3. What to assert — and what **not** to assert
+4. What to mock, and what to never mock *(the line between unit and integration lives here)*
+5. Naming
+
+Which means the real deliverable of this project is not the tool. **It is your team's testing standard, written down.** The tool just executes it — and the CI gate is what makes it stick.
+
+### Every layer, decided for you
+
+You do not tell redbar which kind of test you need, and neither does a model. It infers it from the code, the way a senior would in two seconds:
+
+| Signal in the file | Layer |
+|---|---|
+| A route or controller — `pages/`, `routes/`, `@RestController`, `#[get(`, `Route::`, Next.js `app/**/page.tsx` | **e2e** |
+| An I/O boundary — `repository`, `dao`, `client`, `gateway`, or it imports `sql` / `mongo` / `axios` / `jdbc` | **integration** |
+| Anything else | **unit** |
+
+A gap tagged `e2e` gets `conventions/<lang>/e2e.md`. A gap tagged `unit` gets the unit one. The layer picks the spec, the spec picks the style.
+
+It is a heuristic, and it is wrong sometimes. That is fine: the cost of being wrong is a test at the wrong layer, not a broken test. Putting a model here would buy very little and would cost the zero-LLM guarantee that makes the number worth trusting.
 
 ### Ranking: which gap actually matters
 
@@ -123,18 +162,6 @@ npx tsx scripts/report.ts /path/to/repo --out REDBAR.html
 ```
 
 Self-contained HTML with a print stylesheet — open it and `Cmd+P` for a PDF, or pipe it through headless Chrome in CI. No PDF library in the dependency tree.
-
-### Which kind of test is missing
-
-redbar does not ask you, and does not ask a model. It infers it the way a senior would, in two seconds:
-
-| Signal in the file | Kind |
-|---|---|
-| A route or controller — `pages/`, `routes/`, `@RestController`, `#[get(`, `Route::`, Next.js `app/**/page.tsx` | **e2e** |
-| An I/O boundary — `repository`, `dao`, `client`, `gateway`, or it imports `sql` / `mongo` / `axios` / `jdbc` | **integration** |
-| Anything else | **unit** |
-
-It is a heuristic and it is wrong sometimes. The cost of being wrong is a test of the wrong kind, not a broken test — and a model here would break the zero-LLM promise for no real gain.
 
 ## Why ten languages does not cost ten times more
 

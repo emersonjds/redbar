@@ -1,0 +1,36 @@
+name: ci
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: typecheck
+        run: npm run typecheck
+
+      - name: test
+        run: npm test
+
+      # redbar has zero runtime dependencies by design — the whole LLM integration is spawn(),
+      # and the coverage parsers are hand-written. This fails the build if one sneaks in.
+      - name: assert zero runtime dependencies
+        run: |
+          deps=$(node -p "Object.keys(require('./package.json').dependencies ?? {}).length")
+          if [ "$deps" != "0" ]; then
+            echo "redbar must have zero runtime dependencies, found $deps"
+            node -p "Object.keys(require('./package.json').dependencies)"
+            exit 1
+          fi

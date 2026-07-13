@@ -1,11 +1,14 @@
 node_modules/
+dist/
 .redbar/
 
 # leading slash: anchor to the repo root. A bare `coverage/` matches ANY directory with that
 # name at any depth — including src/coverage/, which silently un-tracked a source file.
 /coverage/
-/target/
-/Cargo.lock
+
+# rust build output, in the repo root and in the fixture (which is a real cargo project)
+target/
+Cargo.lock
 
 # generated reports
 REDBAR*.html

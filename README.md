@@ -298,14 +298,31 @@ Honest about what exists today. The engine is done and exercised on real reposit
 
 | | |
 |---|---|
-| ✅ **Engine** | Language + runner detection, three coverage parsers, diff crossing, symbol attribution, criticality ranking, test-kind classification |
-| ✅ **Verified on real repos** | Ran on a production React Native app (Jest) and on redbar itself (Vitest) |
-| 🚧 `redbar inspect` CLI | The engine is there; the CLI shell is not. Today: `npm run try -- <repo-path>` |
-| 🚧 `redbar init` | Proposes the test libraries for the detected language. **It never installs anything — it prints the command and you press enter.** |
-| 🚧 `redbar fix` | Worker pool that spawns the agent CLI *you already have* — Claude Code, Codex, or Copilot. No SDK, no API key, no new inference bill. |
-| 🚧 MCP server + CI gate | Thin shells over the same engine |
+| ✅ **Engine** | Language + runner detection, three coverage parsers, diff crossing, symbol attribution, criticality ranking, layer classification |
+| ✅ **Verified on real repos** | A production React Native app (Jest) and redbar itself (Vitest). Every serious bug in this tool was found that way |
+| ✅ **CLI** | `redbar inspect`, `redbar init`, `redbar ci` |
+| ✅ **Reports** | `.redbar/gaps.json` for the agent, a printable HTML/PDF table for the human and the PR |
+| ✅ **Agent skills** | `/redbar.inspect`, `/redbar.fix`, `/redbar.init` — the agent reads the gap and the spec, writes the test, **runs it**, and never leaves a red one |
+| ✅ **Conventions** | TypeScript: unit, integration, e2e — each traceable to the library's own docs |
+| 🚧 **Conventions** for Java, Python, Rust, PHP | Same five questions, each ecosystem's idiom |
+| 🚧 **MCP server** | Same engine, exposed to any MCP client |
+| 🚧 **`fix` worker pool** | Batch mode for CI: N gaps in parallel, partitioned by target file so two workers can never collide |
 
 The design documents are in [`docs/superpowers/specs/`](docs/superpowers/specs/), and the implementation plans in [`docs/superpowers/plans/`](docs/superpowers/plans/).
+
+## Use it with your agent
+
+The skills work in Claude Code today, and they follow one rule: **the skill never analyzes coverage itself — it runs the engine and reports what came back.** The LLM orchestrates; it does not calculate.
+
+```
+/redbar.inspect          find what this branch left untested
+/redbar.fix              write the missing tests, run them, never leave a red one
+/redbar.init             propose the test libraries (it never installs them)
+```
+
+`/redbar.fix` is the whole pitch in one command. It reads `.redbar/gaps.json`, reads the canonical spec for that layer, writes **one** test file, **runs it**, and if it fails twice it deletes the file and marks the gap `needs-human`. It never weakens an assertion to get to green — a test that asserts nothing reports coverage that does not exist, which is the exact lie this tool was built to eliminate.
+
+Agent instructions live in [`AGENTS.md`](AGENTS.md), with `CLAUDE.md` and `.github/copilot-instructions.md` pointing at it. One source of truth, not five — **the agent loads it on its own, nobody installs anything.**
 
 ## Try it
 

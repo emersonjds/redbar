@@ -1,15 +1,29 @@
 import type { CoverageFormat, TestKind } from './types.js'
 
+/**
+ * A test runner for a language. One language can have several (jest vs vitest, maven vs
+ * gradle), and they do NOT share a command or a report path — telling a jest user to run
+ * vitest prints a command that can never produce the report redbar is waiting for.
+ */
+export type Runner = {
+  name: string
+  /** matches the project manifest when this runner is the one in use */
+  detect: RegExp
+  /** the command that GENERATES the report */
+  coverageCommand: string
+  /** where that command drops the report, relative to root */
+  reportPath: string
+}
+
 export type Language = {
   id: string
   name: string
   /** files identifying the project root; first match wins */
   markers: string[]
   format: CoverageFormat
-  /** where the report lands, relative to root */
-  reportPath: string
-  /** the command that GENERATES the report */
-  coverageCommand: string
+  /** runners this language can use; the first whose `detect` matches the manifest wins,
+   *  and the first in the list is the fallback when the manifest names none */
+  runners: Runner[]
   /**
    * Where sources live, for formats whose report keys are package-relative (JaCoCo).
    * Multi-module and Kotlin repos break without this: the coverage keys never intersect the
@@ -44,8 +58,14 @@ export const LANGUAGES: Language[] = [
     name: 'Rust',
     markers: ['Cargo.toml'],
     format: 'lcov',
-    reportPath: 'lcov.info',
-    coverageCommand: 'cargo llvm-cov --lcov --output-path lcov.info',
+    runners: [
+      {
+        name: 'cargo-llvm-cov',
+        detect: /\[package\]/,
+        coverageCommand: 'cargo llvm-cov --lcov --output-path lcov.info',
+        reportPath: 'lcov.info',
+      },
+    ],
     sourceExtensions: ['.rs'],
     testFilePattern: /(^|\/)tests\/|_test\.rs$/,
     symbolPatterns: [
@@ -67,10 +87,15 @@ export const LANGUAGES: Language[] = [
     name: 'Go',
     markers: ['go.mod'],
     format: 'cobertura',
-    reportPath: 'coverage.xml',
-    coverageCommand:
-      'go test ./... -coverprofile=coverage.out && gocover-cobertura < coverage.out > coverage.xml',
-    // in Go, exported = leading uppercase. includes methods with a receiver.
+    runners: [
+      {
+        name: 'go-test',
+        detect: /^module\s/m,
+        coverageCommand:
+          'go test ./... -coverprofile=coverage.out && gocover-cobertura < coverage.out > coverage.xml',
+        reportPath: 'coverage.xml',
+      },
+    ],
     sourceExtensions: ['.go'],
     testFilePattern: /_test\.go$/,
     symbolPatterns: [/^func\s+(?:\([^)]*\)\s+)?([A-Z]\w*)/, /^type\s+([A-Z]\w*)/],
@@ -87,8 +112,20 @@ export const LANGUAGES: Language[] = [
     name: 'Java',
     markers: ['pom.xml', 'build.gradle', 'build.gradle.kts'],
     format: 'jacoco',
-    reportPath: 'target/site/jacoco/jacoco.xml',
-    coverageCommand: 'mvn -q test jacoco:report',
+    runners: [
+      {
+        name: 'gradle',
+        detect: /plugins\s*\{|apply\s+plugin/,
+        coverageCommand: './gradlew test jacocoTestReport',
+        reportPath: 'build/reports/jacoco/test/jacocoTestReport.xml',
+      },
+      {
+        name: 'maven',
+        detect: /<project[\s>]/,
+        coverageCommand: 'mvn -q test jacoco:report',
+        reportPath: 'target/site/jacoco/jacoco.xml',
+      },
+    ],
     sourceRoots: ['src/main/java', 'src/main/kotlin', 'src/main/scala'],
     sourceExtensions: ['.java', '.kt', '.scala'],
     testFilePattern: /(^|\/)src\/test\/|Tests?\.(java|kt|scala)$/,
@@ -116,8 +153,14 @@ export const LANGUAGES: Language[] = [
     name: 'PHP',
     markers: ['composer.json'],
     format: 'cobertura',
-    reportPath: 'coverage.xml',
-    coverageCommand: 'vendor/bin/phpunit --coverage-cobertura coverage.xml',
+    runners: [
+      {
+        name: 'phpunit',
+        detect: /"phpunit\/phpunit"/,
+        coverageCommand: 'vendor/bin/phpunit --coverage-cobertura coverage.xml',
+        reportPath: 'coverage.xml',
+      },
+    ],
     sourceExtensions: ['.php'],
     testFilePattern: /(^|\/)tests?\/|Test\.php$/i,
     symbolPatterns: [
@@ -137,9 +180,14 @@ export const LANGUAGES: Language[] = [
     name: 'Python',
     markers: ['pyproject.toml', 'setup.py', 'setup.cfg'],
     format: 'cobertura',
-    reportPath: 'coverage.xml',
-    coverageCommand: 'pytest --cov --cov-report=xml',
-    // top-level (column 0): an indented method inherits the name of its enclosing class
+    runners: [
+      {
+        name: 'pytest',
+        detect: /pytest/,
+        coverageCommand: 'pytest --cov --cov-report=xml',
+        reportPath: 'coverage.xml',
+      },
+    ],
     sourceExtensions: ['.py'],
     testFilePattern: /(^|\/)tests?\/|(^|\/)test_[^\/]+\.py$|_test\.py$/,
     symbolPatterns: [/^def\s+(\w+)/, /^class\s+(\w+)/],
@@ -156,11 +204,28 @@ export const LANGUAGES: Language[] = [
     name: 'TypeScript',
     markers: ['package.json'],
     format: 'lcov',
-    reportPath: 'coverage/lcov.info',
-    // --coverage.reporter=lcov is not optional: lcov is NOT a vitest default reporter, so
-    // plain `--coverage` writes clover/html and leaves reportPath missing. Without this flag
-    // the error tells the user to run a command that cannot fix the error.
-    coverageCommand: 'npx vitest run --coverage --coverage.reporter=lcov',
+    runners: [
+      {
+        name: 'vitest',
+        detect: /"vitest"\s*:/,
+        // lcov is NOT a vitest default reporter — plain `--coverage` writes clover/html and
+        // leaves reportPath missing, so the error would tell the user to run a command that
+        // cannot fix the error
+        coverageCommand: 'npx vitest run --coverage --coverage.reporter=lcov',
+        reportPath: 'coverage/lcov.info',
+      },
+      {
+        name: 'jest',
+        // `"jest":` and not /jest/ — otherwise ts-jest or jest-environment-jsdom sitting in a
+        // vitest project would win the match
+        detect: /"jest"\s*:/,
+        // collectCoverageFrom is not optional: without it jest only instruments what a test
+        // IMPORTED, so a file no test touches never reaches the report and its gap is invisible
+        coverageCommand:
+          "npx jest --coverage --coverageReporters=lcov --collectCoverageFrom='src/**/*.{ts,tsx,js,jsx}'",
+        reportPath: 'coverage/lcov.info',
+      },
+    ],
     sourceExtensions: ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'],
     testFilePattern: /(^|\/)(__tests__|__mocks__|e2e)\/|\.(test|spec)\.[jt]sx?$|\.setup\.[jt]sx?$/,
     // A top-level declaration is one at column 0 — `export` is NOT required. Real React code

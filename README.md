@@ -2,7 +2,11 @@
 
 # redbar
 
-### It finds the test gaps in what you changed — and no model gets a say in the number.
+### Test gaps found by math. Filled by AI.
+
+**The coverage score for what you actually changed — and the agent that writes the missing tests, in your house style.**
+
+*Not another coverage percentage. redbar reads the coverage report your project already produces, crosses it with `git diff`, and tells you exactly which symbols you touched that no test executes — ranked by how dangerous they are. **No model gets a say in that number.** Then it hands the list to the AI agent you already have, along with your team's testing conventions, and lets it write the tests.*
 
 [![ci](https://github.com/emersonjds/redbar/actions/workflows/ci.yml/badge.svg)](https://github.com/emersonjds/redbar/actions/workflows/ci.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -78,6 +82,17 @@ This is not purism. It is the source of the number's authority. A wrong number f
 
 Only the *writing* of a test touches an agent, and it does so through a small adapter.
 
+### Two halves, and only one of them is AI
+
+This is the shape of the whole tool, and the reason the tagline reads the way it does:
+
+| | Who does it | Why |
+|---|---|---|
+| **Finding the gaps** | The compiler and git. **Zero LLM.** | A number you can audit, that comes out the same twice. |
+| **Writing the tests** | The AI agent **you already have** — Claude Code, Codex, or Copilot. | Writing a good test is judgment. That is what models are for. |
+
+Getting this backwards is how tools end up asking a model to guess at coverage. redbar asks a model to do the one thing a model is actually good at, and nothing else.
+
 ### Ranking: which gap actually matters
 
 Not all uncovered lines are equal. A 30-line straight-line function is safer than a 3-line one with four branches in it.
@@ -87,6 +102,27 @@ score = uncovered lines × (symbol has zero coverage ? 2 : 1) × (1 + branches)
 ```
 
 Counting, not opinion. `branches` is a count of `if` / `for` / `while` / `case` / `catch` / `&&` / `||` — read from the code, ignoring the ones sitting inside comments, strings, and regex literals.
+
+### Criticality: what to fix first
+
+A score of `5742` does not tell anyone what to do on a Monday. A band does. It comes from two facts already measured — **is any of this symbol covered?** and **how much branching hides in it?** — and nothing else:
+
+|  | 0 branches | 1–4 branches | 5+ branches |
+|---|---|---|---|
+| **no coverage** | medium | **high** | **critical** |
+| partly covered | low | low | medium |
+
+The threshold of 5 is [McCabe's](https://en.wikipedia.org/wiki/Cyclomatic_complexity): past it, a function needs a test. **Untested branching logic is the worst cell** — every branch is a path nothing has ever executed. Untested straight-line code is bad but bounded. Partly-covered code at least has a test pointing at it that someone can extend.
+
+### The report
+
+A ranked table for the human and the pull request, and `gaps.json` for the agent. Same source of truth, two audiences.
+
+```bash
+npx tsx scripts/report.ts /path/to/repo --out REDBAR.html
+```
+
+Self-contained HTML with a print stylesheet — open it and `Cmd+P` for a PDF, or pipe it through headless Chrome in CI. No PDF library in the dependency tree.
 
 ### Which kind of test is missing
 

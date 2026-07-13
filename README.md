@@ -8,8 +8,11 @@
 
 *Not another coverage percentage. redbar reads the coverage report your project already produces, crosses it with `git diff`, and names the exact symbols you touched that no test executes — ranked by how dangerous they are. **No model gets a say in that number.** Then it hands each gap to an agent together with the canonical spec for that layer — Playwright's own best practices for e2e, Vitest idiom for unit, Testcontainers for integration — so the test comes back looking like the docs, not like a coin flip.*
 
+[![release](https://img.shields.io/github/v/release/emersonjds/redbar?label=release&color=0A7EA4&sort=semver)](https://github.com/emersonjds/redbar/releases/latest)
 [![ci](https://github.com/emersonjds/redbar/actions/workflows/ci.yml/badge.svg)](https://github.com/emersonjds/redbar/actions/workflows/ci.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![changelog](https://img.shields.io/badge/changelog-keep%20a%20changelog-E05735)](CHANGELOG.md)
+<br>
 [![TypeScript 7](https://img.shields.io/badge/TypeScript-7.0-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Node 20.11+](https://img.shields.io/badge/Node-20.11+-5FA04E?logo=nodedotjs&logoColor=white)](https://nodejs.org)
 [![runtime dependencies: 0](https://img.shields.io/badge/runtime%20deps-0-success)](package.json)
@@ -355,6 +358,30 @@ These are load-bearing. Each one is a decision that can be pointed at.
 - **It never leaves a red test behind.** A generated test that fails twice is marked `needs-human` and deleted. One red test leaking into a demo erases everything else.
 - **Every difference between languages is data.** If a `switch (language)` appears, the design failed.
 - **Deterministic output.** Same input, same order, byte for byte. A report that reshuffles cannot be diffed in a PR, and a CI gate built on it would flap.
+
+## Releases
+
+Semantic versioning, and the tag is what publishes. There is no release bot and no
+`semantic-release` in the dependency tree — a tool that sells zero runtime dependencies does not
+bring thirty of them to cut a version.
+
+```bash
+npm run release:patch   # 0.1.0 → 0.1.1   a fix
+npm run release:minor   # 0.1.0 → 0.2.0   a feature, or a change to the public surface
+npm run release:major   # 0.1.0 → 1.0.0   a break
+```
+
+Each one bumps `package.json`, commits, tags, and pushes the tag. Pushing the tag triggers
+[`release.yml`](.github/workflows/release.yml), which **refuses to publish unless the build is
+green** — typecheck, the full suite, the build, the zero-dependency assertion, and a check that the
+tag matches the version in `package.json`. A tag is a promise; it does not get cut from a red build.
+
+`preversion` runs the typecheck and the tests locally too, so a broken release fails on your machine
+before it ever reaches CI.
+
+While the major version is `0`, the public surface — the CLI flags, the `gaps.json` shape, the
+`Language` registry type — can still shift in a minor. [`CHANGELOG.md`](CHANGELOG.md) says when it
+does.
 
 ## Contributing
 

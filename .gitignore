@@ -1,7 +1,8 @@
 node_modules/
 .redbar/
-coverage/
-target/
-Cargo.lock
-target/
-Cargo.lock
+
+# leading slash: anchor to the repo root. A bare `coverage/` matches ANY directory with that
+# name at any depth — including src/coverage/, which silently un-tracked a source file.
+/coverage/
+/target/
+/Cargo.lock

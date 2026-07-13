@@ -1,0 +1,75 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need the full history to build the changelog range
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      # A tag is a promise. Never cut a release from a red build.
+      - name: typecheck
+        run: npm run typecheck
+
+      - name: test
+        run: npm test
+
+      - name: build
+        run: npm run build
+
+      - name: assert zero runtime dependencies
+        run: |
+          deps=$(node -p "Object.keys(require('./package.json').dependencies ?? {}).length")
+          if [ "$deps" != "0" ]; then
+            echo "redbar must have zero runtime dependencies, found $deps"
+            exit 1
+          fi
+
+      # The tag must match the version in package.json, or `npx redbar@1.2.3` installs
+      # something that does not call itself 1.2.3.
+      - name: assert tag matches package version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg=$(node -p "require('./package.json').version")
+          if [ "$tag" != "$pkg" ]; then
+            echo "tag v$tag does not match package.json version $pkg"
+            exit 1
+          fi
+
+      - name: release notes from the commits since the last tag
+        id: notes
+        run: |
+          prev=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || echo "")
+          range=${prev:+$prev..}${GITHUB_REF_NAME}
+          {
+            echo 'body<<RELEASE_EOF'
+            git log --no-merges --pretty='- %s' "$range"
+            echo
+            if [ -n "$prev" ]; then
+              echo "**Full diff:** https://github.com/${GITHUB_REPOSITORY}/compare/${prev}...${GITHUB_REF_NAME}"
+            fi
+            echo RELEASE_EOF
+          } >> "$GITHUB_OUTPUT"
+
+      - name: publish the github release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "${GITHUB_REF_NAME}" \
+            --notes "${{ steps.notes.outputs.body }}"

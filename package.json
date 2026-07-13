@@ -1,11 +1,19 @@
 {
   "name": "redbar",
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "description": "Finds the test coverage gaps in what you changed. No LLM in the analysis — just the coverage report and git.",
   "type": "module",
   "private": true,
+  "license": "MIT",
+  "author": "Emerson Silva",
+  "repository": { "type": "git", "url": "https://github.com/emersonjds/redbar.git" },
+  "keywords": ["testing", "coverage", "code-coverage", "test-gaps", "ci", "mcp"],
+  "engines": { "node": ">=20.11" },
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "coverage": "vitest run --coverage --coverage.reporter=lcov",
+    "try": "tsx scripts/try.ts"
   },
   "devDependencies": {
     "@types/node": "^26.1.1",

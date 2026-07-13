@@ -6,3 +6,7 @@ node_modules/
 /coverage/
 /target/
 /Cargo.lock
+
+# generated reports
+REDBAR*.html
+REDBAR*.pdf

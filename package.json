@@ -1,7 +1,7 @@
 {
   "name": "redbar",
   "version": "0.1.0",
-  "description": "Finds the test coverage gaps in what you changed. No LLM in the analysis — just the coverage report and git.",
+  "description": "Test gaps found by math. Filled by AI. The coverage score for what you actually changed — and the agent that writes the missing tests, in your house style.",
   "type": "module",
   "private": true,
   "license": "MIT",

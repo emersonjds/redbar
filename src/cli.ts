@@ -1,23 +1,35 @@
 #!/usr/bin/env node
-import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { basename, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { agentById, detectAgent } from './agents.js'
 import { renderBriefing, type Conventions } from './briefing.js'
 import { detect } from './detect.js'
 import { inspect, type Inspection, type InspectOptions } from './engine.js'
+import { executeGaps, type Effects } from './execute.js'
 import { explain, matchGaps } from './explain.js'
 import type { Language } from './languages.js'
 import { serve, type ToolArgs, type ToolBox } from './mcp.js'
+import { reconcile } from './outcome.js'
 import { htmlToPdf } from './pdf.js'
-import { renderHtml, renderJson, renderMarkdown, renderText } from './report.js'
+import {
+  renderHtml,
+  renderJson,
+  renderMarkdown,
+  renderOutcomeHtml,
+  renderOutcomeMarkdown,
+  renderText,
+} from './report.js'
 import { selectRunner } from './runner.js'
-import { severity, type Severity } from './severity.js'
+import { ranked, severity, type Severity } from './severity.js'
 import type { Gap, TestKind } from './types.js'
 
 const HELP = `redbar — test-coverage gaps in what changed, zero-LLM
 
 Usage:
   redbar briefing [path] [--all] [--base <ref>] [--out <file>]   the testing brief, for your agent
+  redbar execute [path] [--agent <id>] [--all] [--base <ref>] [--max <n>]   hand the gaps to your agent
   redbar explain [symbol] [--all] [--path <dir>] [--base <ref>]  where a number came from
   redbar inspect [path] [--all] [--base <ref>] [--json] [--html <file>] [--md <file>] [--out <dir>] [--top <n>]
   redbar mcp [path]                                              MCP server on stdio
@@ -203,6 +215,198 @@ function runBriefing(argv: string[]): void {
   )
 }
 
+/**
+ * `execute` refuses to run on a dirty working tree. Pure, so it can be tested without a repo.
+ *
+ * The scope gate in execute.ts subtracts a baseline of already-changed files before judging what
+ * the agent touched — otherwise a human's uncommitted edit would be reverted as if the agent had
+ * written it. That baseline is also the hole: a product file that is ALREADY dirty when the run
+ * starts is inside the baseline, so an agent that then edits that same file is invisible to the
+ * gate. redbar cannot tell its own writes from the developer's, and `git checkout --` has no
+ * reflog and no stash to recover from. Refuse, like `git rebase` does, and for the same reason.
+ * No --force: the flag would exist to be passed by the person about to lose their work.
+ */
+export function dirtyTreeError(porcelain: string): string | null {
+  const dirty = porcelain
+    .split('\n')
+    .map((line) => line.slice(3).trim())
+    .filter(Boolean)
+
+  if (dirty.length === 0) return null
+
+  return [
+    `redbar: the working tree is not clean. execute will not run.`,
+    '',
+    ...dirty.map((file) => `  ${file}`),
+    '',
+    `execute writes test files, and reverts whatever the agent should not have touched. It cannot`,
+    `tell its own writes from yours: a file that was already modified when the run started is`,
+    `indistinguishable from one the agent edited, and reverting it would destroy your work — there`,
+    `is no reflog and no stash behind \`git checkout --\`.`,
+    '',
+    `Commit or stash first, then run redbar execute again.`,
+  ].join('\n')
+}
+
+/**
+ * Hand each gap to the agent, gate what it wrote, then MEASURE what changed.
+ *
+ * The one command in redbar that calls a language model. Everything it does with the answer is
+ * mechanical: git says which files were touched, a regex says whether the test asserts anything,
+ * the runner says whether it passes, and a fresh coverage report says whether the gap is closed.
+ * The agent writes; redbar grades.
+ */
+function runExecute(argv: string[]): void {
+  const { positional, flags } = parseArgs(argv, new Set(['agent', 'base', 'max']))
+  const root = positional[0] ?? '.'
+
+  const git = (args: string[]) =>
+    execFileSync('git', args, { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+
+  // before anything else: nothing below this line is safe on a tree redbar did not start clean.
+  const dirty = dirtyTreeError(git(['-c', 'core.quotePath=false', 'status', '--porcelain']))
+  if (dirty) throw new Error(dirty)
+
+  const onPath = (bin: string): boolean => {
+    try {
+      execFileSync('command', ['-v', bin], { cwd: root, stdio: 'ignore', shell: true })
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  const requested = typeof flags.agent === 'string' ? flags.agent : null
+  const agent = requested ? agentById(requested) : detectAgent(onPath)
+
+  if (!agent) {
+    throw new Error(
+      requested
+        ? `redbar: unknown agent "${requested}".`
+        : `redbar: no coding agent found on PATH. Looked for: claude, codex, copilot, gemini, cursor-agent.\n` +
+          `Install one, or name it with --agent <id>.`,
+    )
+  }
+
+  const before = inspect(root, opts(flags))
+  if (before.gaps.length === 0) {
+    console.log('redbar: no gaps. Nothing for the agent to do.')
+    return
+  }
+
+  const max = typeof flags.max === 'string' ? Number(flags.max) : before.gaps.length
+  const gaps = ranked(before.gaps).slice(0, max)
+
+  process.stderr.write(`redbar: agent ${agent.id} · ${gaps.length} gap(s), worst first\n\n`)
+
+  const read = (file: string): string | null => {
+    const p = join(root, file)
+    return existsSync(p) ? readFileSync(p, 'utf8') : null
+  }
+
+  const effects: Effects = {
+    // 10 minutes: a real agent writing a real e2e test against a real convention is not fast, and
+    // killing it at 60s produces a needs-human that means nothing but "we were impatient"
+    runAgent: (prompt) =>
+      execFileSync(agent.bin, agent.args(prompt), {
+        cwd: root,
+        encoding: 'utf8',
+        timeout: 600_000,
+        maxBuffer: 64 * 1024 * 1024,
+      }),
+
+    // git, not the agent's word. An agent that says "I wrote calc.test.ts" and wrote nothing is
+    // indistinguishable, from its own output, from one that did.
+    changedFiles: () =>
+      git(['-c', 'core.quotePath=false', 'status', '--porcelain'])
+        .split('\n')
+        .map((line) => line.slice(3).trim())
+        .filter(Boolean),
+
+    readFile: read,
+
+    deleteFile: (file) => rmSync(join(root, file), { force: true }),
+
+    // an untracked file has nothing to check out — removing it IS the revert
+    revertFile: (file) => {
+      try {
+        git(['checkout', '--', file])
+      } catch {
+        rmSync(join(root, file), { force: true })
+      }
+    },
+
+    // ONE test file, not the suite. Running everything would let an unrelated pre-existing failure
+    // condemn a test the agent got right, and would take minutes per gap instead of seconds.
+    runTest: (testFile) => {
+      try {
+        execFileSync('sh', ['-c', `${testRunCommand(before.runner.name)} ${testFile}`], {
+          cwd: root,
+          stdio: 'ignore',
+          timeout: 300_000,
+        })
+        return true
+      } catch {
+        return false
+      }
+    },
+
+    onVerdict: (a, i, total) =>
+      process.stderr.write(
+        `  [${String(i + 1).padStart(2)}/${total}] ${a.verdict.padEnd(15)} ${a.symbol ?? a.file}\n`,
+      ),
+  }
+
+  const attempts = executeGaps(gaps, before.language, readConventions(root, before.language), effects, read)
+
+  // THE SECOND MEASUREMENT. Everything above was the agent working; this is redbar checking.
+  //
+  // The report is deleted first, and that is not housekeeping. ensureCoverage only runs the
+  // coverage command when the report is ABSENT — with the old one still on disk, `run: true`
+  // reads it straight back, every line reads as uncovered exactly as before, and every gap the
+  // agent genuinely closed is reported `open`. Deleting it is what makes this a measurement.
+  process.stderr.write(`\nredbar: re-measuring — ${before.runner.coverageCommand}\n`)
+  rmSync(join(root, before.runner.reportPath), { force: true })
+  const after = inspect(root, { ...opts(flags), run: true })
+
+  const outcomes = reconcile(gaps, after.gaps, attempts)
+  const repo = basename(resolve(root))
+
+  const md = renderOutcomeMarkdown(after, outcomes, agent.id)
+  const html = renderOutcomeHtml(after, outcomes, agent.id, repo)
+
+  const dir = join(root, '.redbar')
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, 'OUTCOME.md'), md)
+  writeFileSync(join(dir, 'OUTCOME.html'), html)
+  const printed = htmlToPdf(html, resolve(join(dir, 'OUTCOME.pdf')))
+
+  console.log(md)
+  process.stderr.write(`\nredbar: ${join(dir, 'OUTCOME.md')} — what happened, for the repo\n`)
+  process.stderr.write(`redbar: ${join(dir, 'OUTCOME.html')} — the same, for you\n`)
+  if (printed) process.stderr.write(`redbar: ${join(dir, 'OUTCOME.pdf')} — the same, for whoever asks\n`)
+}
+
+/**
+ * How to run ONE test file, per runner. Registry-shaped; move it into languages.ts if it grows.
+ *
+ * ponytail: the JVM entries take a class name where the others take a path, so maven and gradle
+ * only work when the test file's basename IS the class. Fix when a JVM repo actually runs execute.
+ */
+function testRunCommand(runner: string): string {
+  const commands: Record<string, string> = {
+    vitest: 'npx vitest run',
+    jest: 'npx jest',
+    pytest: 'python -m pytest',
+    phpunit: 'vendor/bin/phpunit',
+    'cargo-llvm-cov': 'cargo test',
+    maven: 'mvn -q test -Dtest=',
+    gradle: './gradlew test --tests',
+    'go-test': 'go test',
+  }
+  return commands[runner] ?? 'npm test --'
+}
+
 /** The audit. `redbar explain Checkout` — where every number in that row came from. */
 function runExplain(argv: string[]): void {
   const { positional, flags } = parseArgs(argv, new Set(['path', 'base']))
@@ -340,6 +544,9 @@ function main(): void {
     switch (command) {
       case 'briefing':
         runBriefing(argv.slice(1))
+        break
+      case 'execute':
+        runExecute(argv.slice(1))
         break
       case 'explain':
         runExplain(argv.slice(1))

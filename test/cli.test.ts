@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { gateResult } from '../src/cli.js'
+import { dirtyTreeError, gateResult } from '../src/cli.js'
 import type { Gap } from '../src/types.js'
 
 const gap = (overrides: Partial<Pick<Gap, 'fullyUncovered' | 'branches'>>): Gap => ({
@@ -44,5 +44,34 @@ describe('gateResult', () => {
   it('medium and low counts never affect the gate', () => {
     const gaps = Array.from({ length: 50 }, () => gap({ fullyUncovered: false, branches: 0 }))
     expect(gateResult(gaps, { maxCritical: 0, maxHigh: 0 }).failed).toBe(false)
+  })
+})
+
+describe('dirtyTreeError', () => {
+  it('returns null on a clean tree', () => {
+    expect(dirtyTreeError('')).toBeNull()
+    expect(dirtyTreeError('\n')).toBeNull()
+  })
+
+  it('refuses a tree with a modified file, and names it', () => {
+    const message = dirtyTreeError(' M src/checkout.ts\n')
+    expect(message).not.toBeNull()
+    expect(message).toContain('src/checkout.ts')
+    expect(message).toMatch(/commit or stash/i)
+  })
+
+  it('refuses a tree with an untracked file', () => {
+    const message = dirtyTreeError('?? notes.md\n')
+    expect(message).toContain('notes.md')
+  })
+
+  it('names every dirty path, staged or not', () => {
+    const message = dirtyTreeError('M  src/a.ts\n D src/b.ts\n?? c.ts\n')
+    for (const file of ['src/a.ts', 'src/b.ts', 'c.ts']) expect(message).toContain(file)
+  })
+
+  it('says why: execute reverts files and cannot tell its writes from the developer\'s', () => {
+    const message = dirtyTreeError(' M src/a.ts\n') ?? ''
+    expect(message).toMatch(/revert/i)
   })
 })

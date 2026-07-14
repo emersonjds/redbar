@@ -340,13 +340,14 @@ Honest about what exists today. The engine is done and exercised on real reposit
 |---|---|
 | ✅ **Engine** | Language + runner detection, three coverage parsers, diff crossing, symbol attribution, criticality ranking, layer classification |
 | ✅ **Verified on real repos** | A production React Native app (Jest) and redbar itself (Vitest). Every serious bug in this tool was found that way |
-| ✅ **CLI** | `redbar inspect`, `redbar init`, `redbar ci` |
+| ✅ **CLI** | `redbar inspect`, `redbar briefing`, `redbar execute`, `redbar explain`, `redbar init`, `redbar ci`, `redbar mcp` |
 | ✅ **Reports** | `.redbar/gaps.json` for the agent, a markdown comment for the pull request, a printable HTML/PDF table for the human |
 | ✅ **CI gate** | `redbar ci --md` — fails the build and posts the gap table on the PR, editing its own comment instead of stacking |
+| ✅ **`execute`** | Hands each gap to whichever coding agent is installed, gates what it wrote, then re-measures. `OUTCOME.md` reports the measured verdicts and the agent's own account, never mixed |
 | ✅ **Agent skills** | `/redbar.inspect`, `/redbar.fix`, `/redbar.init` — the agent reads the gap and the spec, writes the test, **runs it**, and never leaves a red one |
+| ✅ **MCP server** | `redbar mcp` — same engine, exposed to any MCP client |
 | ✅ **Conventions** | TypeScript: unit, integration, e2e — each traceable to the library's own docs |
 | 🚧 **Conventions** for Java, Python, Rust, PHP | Same five questions, each ecosystem's idiom |
-| 🚧 **MCP server** | Same engine, exposed to any MCP client |
 | 🚧 **`fix` worker pool** | Batch mode for CI: N gaps in parallel, partitioned by target file so two workers can never collide |
 
 The design documents are in [`docs/superpowers/specs/`](docs/superpowers/specs/), and the implementation plans in [`docs/superpowers/plans/`](docs/superpowers/plans/).
@@ -364,6 +365,39 @@ The skills work in Claude Code today, and they follow one rule: **the skill neve
 `/redbar.fix` is the whole pitch in one command. It reads `.redbar/gaps.json`, reads the canonical spec for that layer, writes **one** test file, **runs it**, and if it fails twice it deletes the file and marks the gap `needs-human`. It never weakens an assertion to get to green — a test that asserts nothing reports coverage that does not exist, which is the exact lie this tool was built to eliminate.
 
 Agent instructions live in [`AGENTS.md`](AGENTS.md), with `CLAUDE.md` and `.github/copilot-instructions.md` pointing at it. One source of truth, not five — **the agent loads it on its own, nobody installs anything.**
+
+### `redbar execute` — the agent writes, redbar grades
+
+```bash
+redbar execute            # detects your agent, hands it every gap, then measures what changed
+redbar execute --max 3    # the three worst gaps only
+```
+
+It finds whichever coding agent is installed (`claude`, `codex`, `copilot`, `gemini`,
+`cursor-agent`), hands it **one gap at a time** with the canonical standard for that layer, and puts
+everything it writes through four gates — none of which the agent has a vote in:
+
+| Gate | If it fails |
+|---|---|
+| Did it touch product code? | **reverted.** An agent that "fixes" the source to make its test pass has silently changed what your system does. |
+| Did it write more than one test file? | **all of them deleted**, marked `too-many-files`. Rule 1 of the prompt is "exactly one test file" — an ungraded extra file would still raise coverage and close the gap without ever passing the next two gates. |
+| Does the test assert anything? | **deleted.** A test that asserts nothing still raises coverage. That is the trick this gate exists to catch. |
+| Does the test pass? (one retry) | **deleted**, and the gap is marked `needs-human`. |
+
+Before each gap runs, redbar snapshots which files are already dirty and subtracts that baseline
+from what the agent touched — so gate one never reverts a human's uncommitted edit, and gap two
+never inherits or deletes gap one's test file just because it is still sitting in the tree.
+
+Then it **re-runs the coverage command and inspects again**. A gap is `closed` because the fresh
+report says those lines now execute — not because the agent said so. `OUTCOME.md` renders the
+measured verdicts (`closed`, `open`, `no-assertion`, `too-many-files`, `touched-source`) and the
+agent's own account (`needs-human`, `timeout`, `no-output`) in two separate blocks, and the second
+never gets to promote itself into the first.
+
+`execute` refuses to run on a dirty working tree. It writes files and reverts files, and it cannot
+tell its own writes from your uncommitted work — reverting the wrong one has no reflog and no stash
+behind it. It names what is dirty and tells you to commit or stash first. There is no `--force`:
+the same stance `git rebase` takes, for the same reason.
 
 ## Try it
 

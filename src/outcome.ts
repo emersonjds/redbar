@@ -15,10 +15,12 @@ export type Verdict =
 export type Attempt = {
   file: string
   symbol: string | null
+  /** the gap's first line — disambiguates two symbols that share a name in the same file */
+  line: number
   verdict: Verdict
   /** the test file the agent wrote, when one survived the gates */
   testFile?: string
-  /** the agent's own words. ONLY ever carried on needs-human, and always labelled as its words */
+  /** free-text reason in the agent's own words; on needs-human and timeout, not a measurement */
   note?: string
 }
 
@@ -40,13 +42,21 @@ export function isMeasured(verdict: Verdict): boolean {
   return verdict === 'closed' || verdict === 'open' || verdict === 'no-assertion' || verdict === 'touched-source'
 }
 
-const key = (file: string, symbol: string | null) => `${file}::${symbol ?? ''}`
+// Attempts key on (file, symbol, first line): both sides come from the same BEFORE list, so the
+// first line is stable here. Never use this key against the AFTER report — see isClosed below.
+const attemptKey = (file: string, symbol: string | null, firstLine: number) =>
+  `${file}::${symbol ?? ''}::${firstLine}`
 
 /**
  * What actually happened to each gap.
  *
- * The agent's claim is never the verdict. A gap is `closed` when it was in the BEFORE report and is
- * absent from the AFTER report — i.e. the fresh coverage run says those lines now execute.
+ * The agent's claim is never the verdict. A gap is `closed` when NONE of its uncovered lines are
+ * still uncovered in the fresh report — matched by LINES, never by (file, symbol). `gap.ts` groups
+ * gaps by symbol IDENTITY, not name, so two distinct gaps can share a file and a symbol name
+ * (overloads, several `impl Foo` blocks); matching by name would let one gap's verdict leak onto
+ * its sibling. Matching by lines is also immune to partial coverage: a symbol that is only
+ * partly covered still has some of its original lines in the after-report, so it correctly reads
+ * as `open`, never `closed`.
  *
  * One exception, and it is the important one: a REJECTED attempt stays rejected even if the gap
  * vanished. A test that asserts nothing still executes the lines, so coverage rises and the gap
@@ -54,19 +64,30 @@ const key = (file: string, symbol: string | null) => `${file}::${symbol ?? ''}`
  * assertion gate just caught.
  */
 export function reconcile(before: Gap[], after: Gap[], attempts: Attempt[]): Outcome[] {
-  const stillOpen = new Set(after.map((g) => key(g.file, g.symbol)))
-  const byGap = new Map(attempts.map((a) => [key(a.file, a.symbol), a]))
+  const stillUncovered = new Map<string, Set<number>>()
+  for (const g of after) {
+    const lines = stillUncovered.get(g.file) ?? new Set<number>()
+    for (const n of g.lines) lines.add(n)
+    stillUncovered.set(g.file, lines)
+  }
+
+  const isClosed = (gap: Gap): boolean => {
+    const lines = stillUncovered.get(gap.file)
+    if (!lines) return true
+    return !gap.lines.some((n) => lines.has(n))
+  }
+
+  const byGap = new Map(attempts.map((a) => [attemptKey(a.file, a.symbol, a.line), a]))
 
   return ranked(before).map((gap) => {
-    const attempt = byGap.get(key(gap.file, gap.symbol))
+    const attempt = byGap.get(attemptKey(gap.file, gap.symbol, gap.lines[0] ?? 0))
 
     // the gates already reached a final answer; the after-report cannot overturn it
     if (attempt && attempt.verdict !== 'closed') {
       return { gap, verdict: attempt.verdict, ...(attempt.note ? { note: attempt.note } : {}) }
     }
 
-    const closed = !stillOpen.has(key(gap.file, gap.symbol))
-    if (attempt && closed) {
+    if (attempt && isClosed(gap)) {
       return { gap, verdict: 'closed' as const, ...(attempt.testFile ? { testFile: attempt.testFile } : {}) }
     }
 

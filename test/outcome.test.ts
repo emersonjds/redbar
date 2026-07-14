@@ -16,6 +16,7 @@ const gap = (symbol: string, over: Partial<Gap> = {}): Gap => ({
 const attempt = (symbol: string, over: Partial<Attempt> = {}): Attempt => ({
   file: 'src/calc.ts',
   symbol,
+  line: 10,
   verdict: 'closed',
   ...over,
 })
@@ -73,6 +74,47 @@ describe('reconcile', () => {
 
     expect(outcomes.find((o) => o.gap.file === 'src/calc.ts')!.verdict).toBe('closed')
     expect(outcomes.find((o) => o.gap.file === 'src/other.ts')!.verdict).toBe('open')
+  })
+
+  it('two gaps, same file, same symbol name, different lines: an attempt on one never decides the other', () => {
+    // gap.ts groups by symbol IDENTITY, not name — two `impl Foo` blocks, two overloads. The key
+    // built from (file, symbol) alone collapses them; this locks in that they stay independent.
+    const gapA = gap('divide', { lines: [10, 11] })
+    const gapB = gap('divide', { lines: [20, 21] })
+
+    const outcomes = reconcile(
+      [gapA, gapB],
+      [gapB], // gapA's lines are gone from the fresh report; gapB's are still there
+      [attempt('divide', { line: 10, testFile: 'src/calc.test.ts' })], // targets gapA only
+    )
+
+    const outcomeA = outcomes.find((o) => o.gap.lines[0] === 10)!
+    const outcomeB = outcomes.find((o) => o.gap.lines[0] === 20)!
+
+    expect(outcomeA.verdict).toBe('closed')
+    // gapB has no attempt of its own — it must not inherit gapA's verdict, and must not be
+    // closed just because it shares a symbol name with a gap that closed.
+    expect(outcomeB.verdict).toBe('open')
+  })
+
+  it('a partially-covered symbol is open, never closed, even with an attempt', () => {
+    // the after-report still carries SOME of the before-gap's lines: the symbol was touched but
+    // not finished. Matching by lines[0] alone would change key and make this read as absent —
+    // and reconcile must never manufacture a false "closed".
+    const before = gap('divide', { lines: [10, 11, 12] })
+    const after = gap('divide', { lines: [11] }) // line 11 still uncovered
+
+    const outcomes = reconcile([before], [after], [attempt('divide', { line: 10, testFile: 'src/calc.test.ts' })])
+
+    expect(outcomes[0]!.verdict).toBe('open')
+  })
+
+  it('a gap absent from the fresh report with no attempt at all is open, not closed', () => {
+    // nothing ran on this gap — another gap's test may have incidentally covered it, but redbar
+    // did not do that work and must not claim it. Deleting the `attempt &&` guard must fail this.
+    const outcomes = reconcile([gap('divide')], [], [])
+
+    expect(outcomes[0]!.verdict).toBe('open')
   })
 
   it('orders the outcomes worst-band first, like every other redbar output', () => {

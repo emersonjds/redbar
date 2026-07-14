@@ -7,6 +7,7 @@ export type Verdict =
   | 'open'
   | 'no-assertion'
   | 'touched-source'
+  | 'too-many-files'
   | 'needs-human'
   | 'timeout'
   | 'no-output'
@@ -39,7 +40,13 @@ export type Outcome = {
  * told so.
  */
 export function isMeasured(verdict: Verdict): boolean {
-  return verdict === 'closed' || verdict === 'open' || verdict === 'no-assertion' || verdict === 'touched-source'
+  return (
+    verdict === 'closed' ||
+    verdict === 'open' ||
+    verdict === 'no-assertion' ||
+    verdict === 'touched-source' ||
+    verdict === 'too-many-files'
+  )
 }
 
 // Attempts key on (file, symbol, first line): both sides come from the same BEFORE list, so the

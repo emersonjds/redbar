@@ -56,6 +56,15 @@ function attemptGap(
 ): Attempt {
   const id = { file: gap.file, symbol: gap.symbol, line: gap.lines[0]! }
 
+  // The baseline. changedFiles() reports the state of the WHOLE working tree, not what THIS
+  // gap's agent did — without subtracting it out, a human's uncommitted edit sitting there before
+  // redbar even started gets revertFile'd as if the agent wrote it (unrecoverable: `git checkout
+  // --` has no reflog, no stash), and gap 2 adopts gap 1's already-accepted test file as its own
+  // output, or deletes it out from under it, just because it is still dirty in the tree. Taking
+  // this immediately before runAgent and subtracting it after is the only thing that lets one
+  // gap's verdict be about what one gap's agent actually touched. Do not simplify this away.
+  const before = new Set(effects.changedFiles())
+
   let stdout: string
   try {
     stdout = effects.runAgent(buildPrompt(gap, language, conventions, source(gap.file)))
@@ -64,7 +73,9 @@ function attemptGap(
     return { ...id, verdict: 'timeout', note: err instanceof Error ? err.message : String(err) }
   }
 
-  const touched = effects.changedFiles()
+  // .sort(): changedFiles() makes no ordering guarantee, and this project's whole premise is a
+  // deterministic answer — the same tree must produce the same output every run.
+  const touched = effects.changedFiles().filter((f) => !before.has(f)).sort()
   const testFiles = touched.filter((f) => language.testFilePattern.test(f))
   const productFiles = touched.filter((f) => !language.testFilePattern.test(f))
 
@@ -77,20 +88,34 @@ function attemptGap(
     return { ...id, verdict: 'touched-source', note: `reverted: ${productFiles.join(', ')}` }
   }
 
+  // GATE 1b — exactly one file. The prompt asks for exactly one test file; more than that means
+  // some of what the agent wrote would run, assert, and raise coverage without ever being read or
+  // judged by gate 2. All of it is deleted — this is a MEASURED verdict, redbar counted the files.
+  if (testFiles.length > 1) {
+    for (const file of testFiles) effects.deleteFile(file)
+    return { ...id, verdict: 'too-many-files', note: `wrote ${testFiles.length}: ${testFiles.join(', ')}` }
+  }
+
   const testFile = testFiles[0]
   if (!testFile) return { ...id, verdict: 'no-output' }
 
   // GATE 2 — assertions. Checked BEFORE the test is run, because a test that asserts nothing always
   // passes: running it first would just confirm the trick.
   const written = effects.readFile(testFile)
-  if (written === null || countAssertions(written, language) === 0) {
+  if (written === null) {
+    // could not read the file at all — not the same claim as "read it fine, it asserts nothing"
     effects.deleteFile(testFile)
-    return { ...id, verdict: 'no-assertion' }
+    return { ...id, verdict: 'no-assertion', note: 'could not read the file the agent wrote' }
+  }
+  if (countAssertions(written, language) === 0) {
+    effects.deleteFile(testFile)
+    return { ...id, verdict: 'no-assertion', note: 'the test asserts nothing' }
   }
 
   // GATE 3 — execution. One retry: a flaky first run is common, two failures is a real one.
   if (!effects.runTest(testFile) && !effects.runTest(testFile)) {
     effects.deleteFile(testFile)
+    // .slice(-500) keeps the LAST 500 chars — a reason stated at the top of a chatty agent log is lost
     return { ...id, verdict: 'needs-human', note: stdout.trim().slice(-500) }
   }
 

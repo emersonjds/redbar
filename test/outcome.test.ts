@@ -133,6 +133,7 @@ describe('isMeasured', () => {
     expect(isMeasured('open')).toBe(true)
     expect(isMeasured('no-assertion')).toBe(true)
     expect(isMeasured('touched-source')).toBe(true)
+    expect(isMeasured('too-many-files')).toBe(true)
   })
 
   it('needs-human is the agent talking, and must be labelled as such', () => {

@@ -1,24 +1,67 @@
 #!/usr/bin/env node
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { basename, join, resolve } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { renderBriefing, type Conventions } from './briefing.js'
 import { detect } from './detect.js'
-import { inspect } from './engine.js'
+import { inspect, type Inspection, type InspectOptions } from './engine.js'
+import { explain, matchGaps } from './explain.js'
 import type { Language } from './languages.js'
-import { renderHtml, renderJson, renderText } from './report.js'
+import { serve, type ToolArgs, type ToolBox } from './mcp.js'
+import { htmlToPdf } from './pdf.js'
+import { renderHtml, renderJson, renderMarkdown, renderText } from './report.js'
 import { selectRunner } from './runner.js'
 import { severity, type Severity } from './severity.js'
-import type { Gap } from './types.js'
+import type { Gap, TestKind } from './types.js'
 
 const HELP = `redbar — test-coverage gaps in what changed, zero-LLM
 
 Usage:
-  redbar inspect [path] [--base <ref>] [--json] [--html <file>] [--out <dir>] [--top <n>]
+  redbar briefing [path] [--all] [--base <ref>] [--out <file>]   the testing brief, for your agent
+  redbar explain [symbol] [--all] [--path <dir>] [--base <ref>]  where a number came from
+  redbar inspect [path] [--all] [--base <ref>] [--json] [--html <file>] [--md <file>] [--out <dir>] [--top <n>]
+  redbar mcp [path]                                              MCP server on stdio
   redbar init [path]
-  redbar ci [path] [--max-critical <n>] [--max-high <n>] [--base <ref>]
+  redbar ci [path] [--max-critical <n>] [--max-high <n>] [--base <ref>] [--md <file>]
   redbar --help
   redbar --version
+
+  --all   scan the whole repository instead of the diff. The diff is the default: nobody takes a
+          legacy repo to 80%, everybody can avoid making it worse. Use --all for the first look.
 `
+
+const LAYERS: TestKind[] = ['unit', 'integration', 'e2e']
+
+/**
+ * The standard for each layer: the one redbar ships, then the project's own deltas appended.
+ *
+ * A project override is for the genuinely local choice no library documents (MSW or nock? which
+ * fixture factory?). It is APPENDED, never a replacement — a project that overrides everything has
+ * not adopted a standard, it has written a house style with extra steps.
+ */
+function readConventions(root: string, language: Language): Conventions {
+  const conventions: Conventions = {}
+
+  for (const layer of LAYERS) {
+    const shipped = fileURLToPath(
+      new URL(`../conventions/${language.id}/${layer}.md`, import.meta.url),
+    )
+    const project = join(root, '.redbar', 'conventions', language.id, `${layer}.md`)
+    const parts = [shipped, project].filter(existsSync).map((p) => readFileSync(p, 'utf8'))
+
+    if (parts.length > 0) conventions[layer] = parts.join('\n\n---\n\n')
+  }
+
+  return conventions
+}
+
+function briefingFor(root: string, inspection: Inspection): string {
+  return renderBriefing(
+    inspection,
+    readConventions(root, inspection.language),
+    basename(resolve(root)),
+  )
+}
 
 type Flags = Record<string, string | boolean>
 
@@ -37,6 +80,25 @@ function parseArgs(argv: string[], valueFlags: Set<string>): { positional: strin
     }
   }
   return { positional, flags }
+}
+
+/**
+ * The options every reporting command shares.
+ *
+ * `--all` deliberately does NOT reach `redbar ci`: a gate on the whole repository fails the first
+ * pull request of every legacy project, gets switched off that afternoon, and takes the gate that
+ * WOULD have worked down with it. The gate judges the diff. `--all` is for looking.
+ */
+function opts(flags: Flags): InspectOptions {
+  const base = typeof flags.base === 'string' ? flags.base : undefined
+  return {
+    // a human at a terminal asked for an answer, not for a chore: if the report is missing, run
+    // the project's own coverage command. `--no-run` restores the "print the command and stop"
+    // behaviour, which is what a CI job with a separate coverage step wants.
+    run: flags['no-run'] !== true,
+    ...(flags.all ? { all: true } : {}),
+    ...(base ? { base } : {}),
+  }
 }
 
 function readVersion(): string {
@@ -71,11 +133,10 @@ function readManifest(root: string, language: Language): string {
 }
 
 function runInspect(argv: string[]): void {
-  const { positional, flags } = parseArgs(argv, new Set(['base', 'html', 'out', 'top']))
+  const { positional, flags } = parseArgs(argv, new Set(['base', 'html', 'md', 'out', 'top']))
   const root = positional[0] ?? '.'
-  const base = typeof flags.base === 'string' ? flags.base : undefined
 
-  const inspection = inspect(root, base ? { base } : {})
+  const inspection = inspect(root, opts(flags))
 
   if (flags.json) {
     console.log(renderJson(inspection))
@@ -88,9 +149,119 @@ function runInspect(argv: string[]): void {
     writeFileSync(flags.html, renderHtml(inspection, basename(resolve(root))))
   }
 
+  // no limits: `inspect` reports, it does not judge. A verdict here would imply a gate that
+  // is not running.
+  if (typeof flags.md === 'string') {
+    writeFileSync(flags.md, renderMarkdown(inspection))
+  }
+
   const outDir = typeof flags.out === 'string' ? flags.out : '.redbar'
   mkdirSync(outDir, { recursive: true })
   writeFileSync(join(outDir, 'gaps.json'), renderJson(inspection))
+}
+
+/**
+ * The document — in the three forms the three audiences actually accept.
+ *
+ *   TESTING.md   the agent reads this. Plain markdown, self-contained, no tool required.
+ *   REDBAR.html  the developer opens this. Ranked table, print stylesheet.
+ *   REDBAR.pdf   management gets this. Same numbers; nobody forwards a terminal screenshot.
+ *
+ * One inspection, three renderings. They cannot disagree, which is the only property that makes a
+ * report worth sending to someone who cannot re-run it.
+ */
+function runBriefing(argv: string[]): void {
+  const { positional, flags } = parseArgs(argv, new Set(['base', 'out', 'pdf']))
+  const root = positional[0] ?? '.'
+
+  const inspection = inspect(root, opts(flags))
+  const doc = briefingFor(root, inspection)
+  const repo = basename(resolve(root))
+
+  console.log(doc)
+
+  const dir = join(root, '.redbar')
+  mkdirSync(dir, { recursive: true })
+
+  const mdPath = typeof flags.out === 'string' ? flags.out : join(dir, 'TESTING.md')
+  const htmlPath = join(dir, 'REDBAR.html')
+  const html = renderHtml(inspection, repo)
+
+  writeFileSync(mdPath, doc)
+  writeFileSync(htmlPath, html)
+
+  const pdfPath = typeof flags.pdf === 'string' ? flags.pdf : join(dir, 'REDBAR.pdf')
+  const printed = htmlToPdf(html, resolve(pdfPath))
+
+  process.stderr.write(`\nredbar: ${mdPath} — the brief, for your agent\n`)
+  process.stderr.write(`redbar: ${htmlPath} — the table, for you\n`)
+  process.stderr.write(
+    printed
+      ? `redbar: ${pdfPath} — the same numbers, for whoever asks for a PDF\n`
+      : `redbar: no Chrome/Chromium/Edge found, so no PDF. Open ${htmlPath} and press Cmd+P — the\n` +
+          `redbar: print stylesheet is already in it, and the result is the same file.\n`,
+  )
+}
+
+/** The audit. `redbar explain Checkout` — where every number in that row came from. */
+function runExplain(argv: string[]): void {
+  const { positional, flags } = parseArgs(argv, new Set(['path', 'base']))
+  const root = typeof flags.path === 'string' ? flags.path : '.'
+  const query = positional[0] ?? ''
+
+  const inspection = inspect(root, opts(flags))
+  const matched = matchGaps(inspection.gaps, query)
+
+  if (matched.length === 0) {
+    // an empty result is an answer, not a failure — and inventing a near miss would be the one
+    // thing this command exists to prevent
+    console.log(
+      query
+        ? `redbar: no gap matches "${query}". Run \`redbar inspect\` to see the ${inspection.gaps.length} that exist.`
+        : 'redbar: no gaps. Nothing to explain.',
+    )
+    return
+  }
+
+  console.log(matched.map((gap) => explain(inspection, gap)).join('\n\n───\n\n'))
+}
+
+/** The MCP server. The engine, exposed to whatever agent the developer already uses. */
+function runMcp(argv: string[]): void {
+  const { positional } = parseArgs(argv, new Set())
+  const defaultRoot = positional[0] ?? '.'
+
+  const rootOf = (args: ToolArgs) => (typeof args.path === 'string' ? args.path : defaultRoot)
+
+  const inspectFor = (args: ToolArgs): Inspection => {
+    const root = rootOf(args)
+    const base = typeof args.base === 'string' ? args.base : undefined
+    const inspection = inspect(root, { ...(args.all === true ? { all: true } : {}), ...(base ? { base } : {}) })
+
+    // The developer who just connected redbar is standing on the base branch, where the diff is
+    // empty. Answering "0 gaps" to someone with 400 untested functions is a true statement and a
+    // useless one — they asked what to test, not what they changed. Fall back to the whole repo,
+    // and the base field in the output says which question was answered.
+    if (inspection.gaps.length === 0 && args.all !== false) {
+      return inspect(root, { all: true })
+    }
+    return inspection
+  }
+
+  const tools: ToolBox = {
+    redbar_inspect: (args) => renderText(inspectFor(args)),
+    redbar_briefing: (args) => briefingFor(rootOf(args), inspectFor(args)),
+    redbar_explain: (args) => {
+      const inspection = inspectFor(args)
+      const query = typeof args.symbol === 'string' ? args.symbol : ''
+      const matched = matchGaps(inspection.gaps, query)
+
+      if (matched.length === 0) return `redbar: no gap matches "${query}".`
+      return matched.map((gap) => explain(inspection, gap)).join('\n\n───\n\n')
+    },
+  }
+
+  serve(tools)
 }
 
 function runInit(argv: string[]): void {
@@ -123,14 +294,24 @@ function runInit(argv: string[]): void {
 }
 
 function runCi(argv: string[]): number {
-  const { positional, flags } = parseArgs(argv, new Set(['base', 'max-critical', 'max-high']))
+  const { positional, flags } = parseArgs(
+    argv,
+    new Set(['base', 'max-critical', 'max-high', 'md']),
+  )
   const root = positional[0] ?? '.'
   const base = typeof flags.base === 'string' ? flags.base : undefined
   const maxCritical = typeof flags['max-critical'] === 'string' ? Number(flags['max-critical']) : 0
   const maxHigh = typeof flags['max-high'] === 'string' ? Number(flags['max-high']) : Infinity
 
   const inspection = inspect(root, base ? { base } : {})
-  const { failed, counts } = gateResult(inspection.gaps, { maxCritical, maxHigh })
+  const limits = { maxCritical, maxHigh }
+  const { failed, counts } = gateResult(inspection.gaps, limits)
+
+  // written before the exit code is returned: a failing gate is exactly when the reviewer most
+  // needs to read why, so the comment must exist even on the run that turns the PR red
+  if (typeof flags.md === 'string') {
+    writeFileSync(flags.md, renderMarkdown(inspection, limits))
+  }
 
   console.log(`redbar ci — ${inspection.gaps.length} gaps`)
   console.log(`  critical: ${counts.critical}  (max ${maxCritical})`)
@@ -157,6 +338,15 @@ function main(): void {
 
   try {
     switch (command) {
+      case 'briefing':
+        runBriefing(argv.slice(1))
+        break
+      case 'explain':
+        runExplain(argv.slice(1))
+        break
+      case 'mcp':
+        runMcp(argv.slice(1))
+        break
       case 'inspect':
         runInspect(argv.slice(1))
         break

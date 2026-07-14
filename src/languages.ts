@@ -21,6 +21,17 @@ export type Runner = {
   unitLibs: string[]
 }
 
+/**
+ * The canonical standard for one layer: the library's own documentation, never a house invention.
+ *
+ * This is the tie-breaker the whole project rests on. `conventions/<lang>/<layer>.md` spells the
+ * standard out in full where we have written it down; where we have not, the briefing still names
+ * the document and links it — and the model was TRAINED on that document, so it follows it far
+ * more faithfully than it follows anything we could invent. That is why a language works on the
+ * day it enters the registry, without waiting for a convention file to be authored for it.
+ */
+export type Standard = { name: string; url: string }
+
 export type Language = {
   id: string
   name: string
@@ -55,6 +66,8 @@ export type Language = {
    */
   testLibs: Record<Exclude<TestKind, 'unit'>, string[]>
   installCommand: (libs: string[]) => string
+  /** the document the agent must follow for each layer. See `Standard`. */
+  standards: Record<TestKind, Standard>
   /** does the agent write tests in this language? false = inspect only */
   canFix: boolean
 }
@@ -90,6 +103,11 @@ export const LANGUAGES: Language[] = [
       e2e: ['@playwright/test'],
     },
     installCommand: (libs) => `cargo add --dev ${libs.join(' ')}`,
+    standards: {
+      unit: { name: 'The Rust Book, ch. 11 — Writing Tests', url: 'https://doc.rust-lang.org/book/ch11-01-writing-tests.html' },
+      integration: { name: 'The Rust Book, ch. 11.3 — Test Organization', url: 'https://doc.rust-lang.org/book/ch11-03-test-organization.html' },
+      e2e: { name: 'Playwright Best Practices', url: 'https://playwright.dev/docs/best-practices' },
+    },
     canFix: true,
   },
   {
@@ -115,6 +133,11 @@ export const LANGUAGES: Language[] = [
       e2e: ['@playwright/test'],
     },
     installCommand: (libs) => `go get ${libs.join(' ')}`,
+    standards: {
+      unit: { name: 'the Go testing package', url: 'https://pkg.go.dev/testing' },
+      integration: { name: 'Testcontainers for Go', url: 'https://golang.testcontainers.org/' },
+      e2e: { name: 'Playwright Best Practices', url: 'https://playwright.dev/docs/best-practices' },
+    },
     canFix: false, // flips to true once conventions/go/ exists
   },
   {
@@ -157,6 +180,11 @@ export const LANGUAGES: Language[] = [
       `# add to pom.xml (<dependencies>, with <scope>test</scope>):\n${libs
         .map((l) => `#   ${l}`)
         .join('\n')}`,
+    standards: {
+      unit: { name: 'the JUnit 5 User Guide', url: 'https://junit.org/junit5/docs/current/user-guide/' },
+      integration: { name: 'Testcontainers for Java', url: 'https://java.testcontainers.org/' },
+      e2e: { name: 'Playwright for Java — Best Practices', url: 'https://playwright.dev/java/docs/best-practices' },
+    },
     canFix: true,
   },
   {
@@ -184,6 +212,11 @@ export const LANGUAGES: Language[] = [
       e2e: ['@playwright/test'],
     },
     installCommand: (libs) => `composer require --dev ${libs.join(' ')}`,
+    standards: {
+      unit: { name: 'the PHPUnit documentation', url: 'https://docs.phpunit.de/' },
+      integration: { name: 'the PHPUnit documentation', url: 'https://docs.phpunit.de/' },
+      e2e: { name: 'Playwright Best Practices', url: 'https://playwright.dev/docs/best-practices' },
+    },
     canFix: true,
   },
   {
@@ -208,6 +241,11 @@ export const LANGUAGES: Language[] = [
       e2e: ['pytest-playwright'],
     },
     installCommand: (libs) => `pip install -U ${libs.join(' ')}`,
+    standards: {
+      unit: { name: 'the pytest documentation', url: 'https://docs.pytest.org/en/stable/how-to/index.html' },
+      integration: { name: 'Testcontainers for Python', url: 'https://testcontainers-python.readthedocs.io/' },
+      e2e: { name: 'Playwright for Python — Best Practices', url: 'https://playwright.dev/python/docs/best-practices' },
+    },
     canFix: true,
   },
   {
@@ -259,6 +297,11 @@ export const LANGUAGES: Language[] = [
       e2e: ['@playwright/test'],
     },
     installCommand: (libs) => `npm install -D ${libs.join(' ')}`,
+    standards: {
+      unit: { name: 'the Vitest / Jest documentation', url: 'https://vitest.dev/guide/' },
+      integration: { name: 'Testcontainers for Node.js', url: 'https://node.testcontainers.org/' },
+      e2e: { name: 'Playwright Best Practices', url: 'https://playwright.dev/docs/best-practices' },
+    },
     canFix: true,
   },
 ]

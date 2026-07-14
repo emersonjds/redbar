@@ -21,6 +21,17 @@ export type Runner = {
   unitLibs: string[]
 }
 
+/**
+ * The canonical standard for one layer: the library's own documentation, never a house invention.
+ *
+ * This is the tie-breaker the whole project rests on. `conventions/<lang>/<layer>.md` spells the
+ * standard out in full where we have written it down; where we have not, the briefing still names
+ * the document and links it — and the model was TRAINED on that document, so it follows it far
+ * more faithfully than it follows anything we could invent. That is why a language works on the
+ * day it enters the registry, without waiting for a convention file to be authored for it.
+ */
+export type Standard = { name: string; url: string }
+
 export type Language = {
   id: string
   name: string
@@ -49,12 +60,23 @@ export type Language = {
   /** matches an exported/public symbol declaration; group 1 = the name */
   symbolPatterns: RegExp[]
   /**
+   * How an assertion is spelled in this language's test idiom.
+   *
+   * `execute` counts these in the file the agent wrote. Zero assertions means the test executes the
+   * code and proves nothing: coverage rises, the suite goes green, and the gap looks closed. That is
+   * the single most common failure mode of an AI test generator, and it is the reason the gate is
+   * mechanical instead of a sentence in a prompt.
+   */
+  assertionPatterns: RegExp[]
+  /**
    * Test libs `init` proposes for the layers that are language-wide. `unit` is NOT here:
    * it belongs to the runner (jest vs vitest), and putting it here is what made init tell a
    * jest project to install vitest. The human approves; the tool never installs.
    */
   testLibs: Record<Exclude<TestKind, 'unit'>, string[]>
   installCommand: (libs: string[]) => string
+  /** the document the agent must follow for each layer. See `Standard`. */
+  standards: Record<TestKind, Standard>
   /** does the agent write tests in this language? false = inspect only */
   canFix: boolean
 }
@@ -85,11 +107,17 @@ export const LANGUAGES: Language[] = [
       /^\s*pub\s+enum\s+(\w+)/,
       /^\s*impl\s+(?:\w+\s+for\s+)?(\w+)/,
     ],
+    assertionPatterns: [/\bassert(_eq|_ne)?!\s*\(/, /\bpanic!\s*\(/],
     testLibs: {
       integration: ['tokio', 'reqwest'],
       e2e: ['@playwright/test'],
     },
     installCommand: (libs) => `cargo add --dev ${libs.join(' ')}`,
+    standards: {
+      unit: { name: 'The Rust Book, ch. 11 — Writing Tests', url: 'https://doc.rust-lang.org/book/ch11-01-writing-tests.html' },
+      integration: { name: 'The Rust Book, ch. 11.3 — Test Organization', url: 'https://doc.rust-lang.org/book/ch11-03-test-organization.html' },
+      e2e: { name: 'Playwright Best Practices', url: 'https://playwright.dev/docs/best-practices' },
+    },
     canFix: true,
   },
   {
@@ -110,11 +138,17 @@ export const LANGUAGES: Language[] = [
     sourceExtensions: ['.go'],
     testFilePattern: /_test\.go$/,
     symbolPatterns: [/^func\s+(?:\([^)]*\)\s+)?([A-Z]\w*)/, /^type\s+([A-Z]\w*)/],
+    assertionPatterns: [/\bassert\.\w+\s*\(/, /\brequire\.\w+\s*\(/, /\bt\.(Error|Fatal)\w*\s*\(/],
     testLibs: {
       integration: ['github.com/testcontainers/testcontainers-go'],
       e2e: ['@playwright/test'],
     },
     installCommand: (libs) => `go get ${libs.join(' ')}`,
+    standards: {
+      unit: { name: 'the Go testing package', url: 'https://pkg.go.dev/testing' },
+      integration: { name: 'Testcontainers for Go', url: 'https://golang.testcontainers.org/' },
+      e2e: { name: 'Playwright Best Practices', url: 'https://playwright.dev/docs/best-practices' },
+    },
     canFix: false, // flips to true once conventions/go/ exists
   },
   {
@@ -145,6 +179,7 @@ export const LANGUAGES: Language[] = [
       /^\s*public\s+(?:abstract\s+|final\s+)?class\s+(\w+)/,
       /^\s*public\s+(?:static\s+|final\s+|synchronized\s+|abstract\s+)*[\w<>\[\].]+\s+(\w+)\s*\(/,
     ],
+    assertionPatterns: [/\bassert\w*\s*\(/, /\bverify\s*\(/],
     testLibs: {
       integration: [
         'org.springframework.boot:spring-boot-starter-test',
@@ -157,6 +192,11 @@ export const LANGUAGES: Language[] = [
       `# add to pom.xml (<dependencies>, with <scope>test</scope>):\n${libs
         .map((l) => `#   ${l}`)
         .join('\n')}`,
+    standards: {
+      unit: { name: 'the JUnit 5 User Guide', url: 'https://junit.org/junit5/docs/current/user-guide/' },
+      integration: { name: 'Testcontainers for Java', url: 'https://java.testcontainers.org/' },
+      e2e: { name: 'Playwright for Java — Best Practices', url: 'https://playwright.dev/java/docs/best-practices' },
+    },
     canFix: true,
   },
   {
@@ -179,11 +219,17 @@ export const LANGUAGES: Language[] = [
       /^\s*(?:final\s+|abstract\s+)?class\s+(\w+)/,
       /^\s*public\s+(?:static\s+)?function\s+(\w+)/,
     ],
+    assertionPatterns: [/\bassert\w*\s*\(/],
     testLibs: {
       integration: ['phpunit/phpunit', 'guzzlehttp/guzzle'],
       e2e: ['@playwright/test'],
     },
     installCommand: (libs) => `composer require --dev ${libs.join(' ')}`,
+    standards: {
+      unit: { name: 'the PHPUnit documentation', url: 'https://docs.phpunit.de/' },
+      integration: { name: 'the PHPUnit documentation', url: 'https://docs.phpunit.de/' },
+      e2e: { name: 'Playwright Best Practices', url: 'https://playwright.dev/docs/best-practices' },
+    },
     canFix: true,
   },
   {
@@ -203,11 +249,17 @@ export const LANGUAGES: Language[] = [
     sourceExtensions: ['.py'],
     testFilePattern: /(^|\/)tests?\/|(^|\/)test_[^\/]+\.py$|_test\.py$/,
     symbolPatterns: [/^def\s+(\w+)/, /^class\s+(\w+)/],
+    assertionPatterns: [/^\s*assert\b/m, /\bpytest\.raises\s*\(/, /\bself\.assert\w+\s*\(/],
     testLibs: {
       integration: ['pytest', 'httpx', 'testcontainers'],
       e2e: ['pytest-playwright'],
     },
     installCommand: (libs) => `pip install -U ${libs.join(' ')}`,
+    standards: {
+      unit: { name: 'the pytest documentation', url: 'https://docs.pytest.org/en/stable/how-to/index.html' },
+      integration: { name: 'Testcontainers for Python', url: 'https://testcontainers-python.readthedocs.io/' },
+      e2e: { name: 'Playwright for Python — Best Practices', url: 'https://playwright.dev/python/docs/best-practices' },
+    },
     canFix: true,
   },
   {
@@ -254,11 +306,17 @@ export const LANGUAGES: Language[] = [
       /^(?:export\s+)?(?:abstract\s+)?class\s+(\w+)/,
       /^(?:export\s+)?(?:const|let)\s+(\w+)/,
     ],
+    assertionPatterns: [/\bexpect\s*\(/, /\bassert\w*\s*\(/],
     testLibs: {
       integration: ['supertest'],
       e2e: ['@playwright/test'],
     },
     installCommand: (libs) => `npm install -D ${libs.join(' ')}`,
+    standards: {
+      unit: { name: 'the Vitest / Jest documentation', url: 'https://vitest.dev/guide/' },
+      integration: { name: 'Testcontainers for Node.js', url: 'https://node.testcontainers.org/' },
+      e2e: { name: 'Playwright Best Practices', url: 'https://playwright.dev/docs/best-practices' },
+    },
     canFix: true,
   },
 ]

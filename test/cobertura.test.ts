@@ -75,6 +75,47 @@ describe('parseCobertura', () => {
     })
   })
 
+  // Found on a real pytest repo, not on a fixture. `pytest --cov=app` writes
+  // <source>/abs/path/to/repo/app</source> and filename="calc.py" — the filename is relative to
+  // the SOURCE, not to the repo. Keying it as "calc.py" means it never intersects git's
+  // "app/calc.py", the file looks ABSENT from the report, and gap.ts's "a file no test imports is
+  // a total gap" rule fires on a file that is in fact half covered. Every changed line then reads
+  // as uncovered and the whole report inflates to critical — a wrong number wearing the
+  // compiler's uniform, which is the one thing this project promises never to produce.
+  describe('<source> resolution', () => {
+    const xml = `<coverage>
+      <sources><source>/home/user/proj/app</source></sources>
+      <packages><package name=".">
+        <class filename="calc.py" name="calc.py">
+          <lines><line number="1" hits="1"/><line number="12" hits="0"/></lines>
+        </class>
+      </package></packages>
+    </coverage>`
+
+    it('resolves the filename against <source>, relative to the repo root', () => {
+      expect(parseCobertura(xml, '/home/user/proj').get('app/calc.py')).toEqual({
+        file: 'app/calc.py',
+        covered: [1],
+        uncovered: [12],
+      })
+    })
+
+    it('is a no-op when <source> already IS the repo root', () => {
+      expect(parseCobertura(SAMPLE, '/home/user/proj').get('app/calc.py')?.covered).toEqual([1, 4])
+    })
+
+    it('falls back to the raw filename when the resolved path lands outside the root', () => {
+      // a report generated elsewhere (CI container, different checkout) must not silently key
+      // every file under a `../../..` path that matches nothing
+      expect(parseCobertura(xml, '/somewhere/else').get('calc.py')?.uncovered).toEqual([12])
+    })
+
+    it('still parses when the report carries no <source> at all', () => {
+      const bare = `<coverage><class filename="src/a.py"><lines><line number="3" hits="0"/></lines></class></coverage>`
+      expect(parseCobertura(bare, '/home/user/proj').get('src/a.py')?.uncovered).toEqual([3])
+    })
+  })
+
   // XML attribute order is not guaranteed by any writer
   it('reads number and hits in either attribute order', () => {
     const xml = `<coverage>

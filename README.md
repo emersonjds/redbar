@@ -60,20 +60,47 @@ gaps:     289
 
 Read one line of that: a symbol name, the kind of test it is missing, how many uncovered lines you added, and how many branches are hiding in there. `!` means the symbol has **no** coverage at all. That is a to-do list, not a dashboard.
 
-## How it works
+## The whole flow, end to end
+
+You point redbar at a repo. It takes you from "I don't know what's untested" all the way to "tested code, and a report of what happened" — and the line down the middle is the whole design: **everything above it is measured, nothing above it calls a model.**
 
 ```
-   git diff main...HEAD  ──┐
-                           ├──►  changed ∩ uncovered  ──►  attribute to symbol  ──►  rank
-   coverage report ────────┘                                                          │
-   (lcov / JaCoCo / Cobertura)                                                        ▼
-                                                                            ranked, typed gaps
+  you: a repo, on a branch with work on it
+        │
+        ▼
+  ┌─────────────────────────  THE MEASUREMENT  ·  zero LLM  ──────────────────────────┐
+  │  1. detect the language and the runner        from the project's own manifest      │
+  │  2. get a coverage report                     run the project's own command if none│
+  │  3. cross it with  git diff base...HEAD       changed ∩ uncovered                   │
+  │  4. attribute each uncovered line to a symbol, rank it, tag it unit/integration/e2e │
+  └────────────────────────────────────┬──────────────────────────────────────────────┘
+        │
+        ▼
+   the document        .redbar/TESTING.md · gaps.json · REDBAR.html · REDBAR.pdf
+        │              what to test, in what order, at which layer, to whose standard
+        │
+  ══════╪═══════════  the frontier: a model is allowed in here, and nowhere above  ═════
+        │
+        ▼
+  ┌─────────────────────────  THE WRITING  ·  one model, judgment only  ───────────────┐
+  │  5. hand each gap to the agent  one at a time, with the layer's canonical standard  │
+  │  6. gate what it wrote   scope · one-file · assertion · execution  (agent: no vote) │
+  │  7. RE-RUN coverage, inspect again   a gap is "closed" because the report says so   │
+  └────────────────────────────────────┬──────────────────────────────────────────────┘
+        │
+        ▼
+   the outcome         .redbar/OUTCOME.md · .html · .pdf
+                       measured verdicts, and the agent's own account, never mixed
 ```
 
-Four steps, no magic:
+Two halves, one line between them. The top half is the compiler and git; run it twice, get the same bytes. The bottom half is where the model finally does the one thing it is good at — writing a test — and even there it gets no say in whether the gap actually closed. That is measured again, from a fresh coverage report.
+
+> **[See the whole flow as a diagram →](https://claude.ai/code/artifact/fac215b0-64a0-42c4-814f-eef64864049b)** — the twelve steps, the frontier, and the second measurement, laid out end to end.
+
+### Finding the gaps — four steps, no magic
 
 1. **Detect** the language and the test runner from the project's own manifest.
-2. **Parse** the coverage report the project already produces.
+2. **Get** the coverage report the project produces — and if it is missing, run the project's own coverage command to produce it; if it is older than the code, say so, because a stale report hides the newest gaps best.
 3. **Cross** it with the diff — what *changed* and is *uncovered*.
 4. **Rank** by criticality, and label each gap `unit`, `integration`, or `e2e`.
 
@@ -184,15 +211,24 @@ A score of `5742` does not tell anyone what to do on a Monday. A band does. It c
 
 The threshold of 5 is [McCabe's](https://en.wikipedia.org/wiki/Cyclomatic_complexity): past it, a function needs a test. **Untested branching logic is the worst cell** — every branch is a path nothing has ever executed. Untested straight-line code is bad but bounded. Partly-covered code at least has a test pointing at it that someone can extend.
 
-### The report
+### The document — one inspection, every audience
 
-A ranked table for the human and the pull request, and `gaps.json` for the agent. Same source of truth, two audiences.
+The same measurement, rendered for whoever is reading. They cannot disagree with each other, and that is the only property that makes a report worth handing to someone who cannot re-run it.
+
+| File | For | What it is |
+|---|---|---|
+| `.redbar/TESTING.md` | **the agent** | the brief it writes tests from — the work, the order, the layer, the standard, the provenance of every number. Self-contained: paste it into any agent, no redbar required |
+| `.redbar/gaps.json` | **machines** | the stable contract — every gap plus its severity, and a flag when the report is stale |
+| `REDBAR.html` | **you** | a ranked table with a print stylesheet |
+| `REDBAR.pdf` | **management** | the same numbers; nobody forwards a terminal screenshot |
+| a `<!-- redbar -->` PR comment | **the reviewer** | the gap table, editing its own comment on every push instead of stacking |
 
 ```bash
-npx tsx scripts/report.ts /path/to/repo --out REDBAR.html
+redbar briefing            # prints the brief and writes TESTING.md + HTML + PDF
+redbar inspect --html x.html --md x.md   # the table, the PR comment
 ```
 
-Self-contained HTML with a print stylesheet — open it and `Cmd+P` for a PDF, or pipe it through headless Chrome in CI. No PDF library in the dependency tree.
+The PDF comes from the Chrome already on the machine driving its own print stylesheet — no PDF library in the dependency tree. No browser installed? The HTML carries the stylesheet, so `Cmd+P` produces the same file.
 
 ## "Why not just write a skill for this?"
 
@@ -295,6 +331,43 @@ What a team actually gets:
 - **AI-written tests stop drifting.** The agent is handed the canonical spec before it writes a line, so the same gap produces the same shape of test today and next month — regardless of which model wrote it.
 - **Legacy code is not a wall.** redbar only ever looks at what *changed*. A repo at 12% coverage is not asked to reach 80% — it is asked not to get worse. That is the only coverage rule anyone has ever actually kept.
 
+### The gate, in the pull request
+
+`redbar ci` fails the build when the diff carries gaps above the threshold, and `--md` writes the same table as a comment the reviewer actually reads. A gate that only prints `FAIL` gets disabled by the third person it blocks; a gate that names the symbol gets a test written.
+
+```yaml
+# .github/workflows/redbar.yml
+on: pull_request
+permissions: { contents: read, pull-requests: write }
+
+jobs:
+  gaps:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }        # redbar diffs against the base branch
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm }
+      - run: npm ci
+      - run: npm run coverage           # whatever your runner's coverage command is
+      - id: gate
+        continue-on-error: true         # so the comment still lands on the run that fails
+        run: npx redbar ci --base origin/${{ github.base_ref }} --md redbar.md
+      - env: { GH_TOKEN: '${{ github.token }}' }
+        run: |
+          id=$(gh api "repos/${{ github.repository }}/issues/${{ github.event.number }}/comments" \
+                --jq 'map(select(.body | startswith("<!-- redbar -->"))) | .[0].id // empty')
+          [ -n "$id" ] \
+            && gh api -X PATCH "repos/${{ github.repository }}/issues/comments/$id" -F body=@redbar.md \
+            || gh api -X POST "repos/${{ github.repository }}/issues/${{ github.event.number }}/comments" -F body=@redbar.md
+      - if: steps.gate.outcome == 'failure'
+        run: exit 1
+```
+
+The comment carries a `<!-- redbar -->` marker, so every push **edits the same comment** instead of stacking a new one. A pull request with eleven redbar comments is a pull request where nobody reads the redbar comment.
+
+The thresholds are `--max-critical` (default `0`) and `--max-high` (default: unlimited). Start with `--max-critical 0` and nothing else: it blocks only untested branching logic in code the branch actually touched, which is the one rule nobody argues with.
+
 ## Status
 
 Honest about what exists today. The engine is done and exercised on real repositories; the surfaces around it are being built.
@@ -303,12 +376,14 @@ Honest about what exists today. The engine is done and exercised on real reposit
 |---|---|
 | ✅ **Engine** | Language + runner detection, three coverage parsers, diff crossing, symbol attribution, criticality ranking, layer classification |
 | ✅ **Verified on real repos** | A production React Native app (Jest) and redbar itself (Vitest). Every serious bug in this tool was found that way |
-| ✅ **CLI** | `redbar inspect`, `redbar init`, `redbar ci` |
-| ✅ **Reports** | `.redbar/gaps.json` for the agent, a printable HTML/PDF table for the human and the PR |
+| ✅ **CLI** | `redbar inspect`, `redbar briefing`, `redbar execute`, `redbar explain`, `redbar init`, `redbar ci`, `redbar mcp` |
+| ✅ **Reports** | `.redbar/gaps.json` for the agent, a markdown comment for the pull request, a printable HTML/PDF table for the human |
+| ✅ **CI gate** | `redbar ci --md` — fails the build and posts the gap table on the PR, editing its own comment instead of stacking |
+| ✅ **`execute`** | Hands each gap to whichever coding agent is installed, gates what it wrote, then re-measures. `OUTCOME.md` reports the measured verdicts and the agent's own account, never mixed |
 | ✅ **Agent skills** | `/redbar.inspect`, `/redbar.fix`, `/redbar.init` — the agent reads the gap and the spec, writes the test, **runs it**, and never leaves a red one |
+| ✅ **MCP server** | `redbar mcp` — same engine, exposed to any MCP client |
 | ✅ **Conventions** | TypeScript: unit, integration, e2e — each traceable to the library's own docs |
 | 🚧 **Conventions** for Java, Python, Rust, PHP | Same five questions, each ecosystem's idiom |
-| 🚧 **MCP server** | Same engine, exposed to any MCP client |
 | 🚧 **`fix` worker pool** | Batch mode for CI: N gaps in parallel, partitioned by target file so two workers can never collide |
 
 The design documents are in [`docs/superpowers/specs/`](docs/superpowers/specs/), and the implementation plans in [`docs/superpowers/plans/`](docs/superpowers/plans/).
@@ -327,26 +402,60 @@ The skills work in Claude Code today, and they follow one rule: **the skill neve
 
 Agent instructions live in [`AGENTS.md`](AGENTS.md), with `CLAUDE.md` and `.github/copilot-instructions.md` pointing at it. One source of truth, not five — **the agent loads it on its own, nobody installs anything.**
 
-## Try it
-
-Requires Node 20.11+.
+### `redbar execute` — the agent writes, redbar grades
 
 ```bash
-git clone https://github.com/emersonjds/redbar.git
-cd redbar && npm install
-
-# point it at any repo, on a branch with work on it
-npm run try -- /path/to/your/repo
+redbar execute            # detects your agent, hands it every gap, then measures what changed
+redbar execute --max 3    # the three worst gaps only
 ```
 
-No coverage report yet? It fails loudly and hands you the exact command for **your** runner — jest and vitest do not share one, and neither do maven and gradle:
+It finds whichever coding agent is installed (`claude`, `codex`, `copilot`, `gemini`,
+`cursor-agent`), hands it **one gap at a time** with the canonical standard for that layer, and puts
+everything it writes through four gates — none of which the agent has a vote in:
 
-```
-redbar: coverage report not found at coverage/lcov.info.
-Run: npx jest --coverage --coverageReporters=lcov --collectCoverageFrom='src/**/*.{ts,tsx,js,jsx}'
+| Gate | If it fails |
+|---|---|
+| Did it touch product code? | **reverted.** An agent that "fixes" the source to make its test pass has silently changed what your system does. |
+| Did it write more than one test file? | **all of them deleted**, marked `too-many-files`. Rule 1 of the prompt is "exactly one test file" — an ungraded extra file would still raise coverage and close the gap without ever passing the next two gates. |
+| Does the test assert anything? | **deleted.** A test that asserts nothing still raises coverage. That is the trick this gate exists to catch. |
+| Does the test pass? (one retry) | **deleted**, and the gap is marked `needs-human`. |
+
+Before each gap runs, redbar snapshots which files are already dirty and subtracts that baseline
+from what the agent touched — so gate one never reverts a human's uncommitted edit, and gap two
+never inherits or deletes gap one's test file just because it is still sitting in the tree.
+
+Then it **re-runs the coverage command and inspects again**. A gap is `closed` because the fresh
+report says those lines now execute — not because the agent said so. `OUTCOME.md` renders the
+measured verdicts (`closed`, `open`, `no-assertion`, `too-many-files`, `touched-source`) and the
+agent's own account (`needs-human`, `timeout`, `no-output`) in two separate blocks, and the second
+never gets to promote itself into the first.
+
+`execute` refuses to run on a dirty working tree. It writes files and reverts files, and it cannot
+tell its own writes from your uncommitted work — reverting the wrong one has no reflog and no stash
+behind it. It names what is dirty and tells you to commit or stash first. There is no `--force`:
+the same stance `git rebase` takes, for the same reason.
+
+## Try it — the whole journey in four commands
+
+Requires Node 20.11+. Stand in any repo, on a branch with work on it.
+
+```bash
+# 1. what did I change that nothing tests?
+redbar inspect                 # the ranked gap list — measured, zero LLM
+
+# 2. give me the brief to hand my agent
+redbar briefing                # writes .redbar/TESTING.md + HTML + PDF
+
+# 3. let my agent write the tests, and grade the result
+redbar execute                 # detects your agent, gates its work, re-measures
+
+# 4. prove any single number is real
+redbar explain Checkout        # the lcov line, the diff line, the score arithmetic
 ```
 
-Run that, then run redbar again.
+Missing a coverage report? `inspect` runs your project's own coverage command for you. Only tests, no coverage step configured? It fails loudly with the exact command for **your** runner — jest and vitest do not share one, and neither do maven and gradle — and never guesses. No tests at all? It stops and points you at `redbar init`, which proposes the libraries and installs nothing.
+
+Working from the redbar checkout instead of an install? Swap `redbar` for `npm run try --` or `npx tsx src/cli.ts`.
 
 ## Design principles
 

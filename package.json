@@ -25,7 +25,8 @@
     "redbar": "./dist/cli.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "conventions"
   ],
   "scripts": {
     "test": "vitest run",

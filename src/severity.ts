@@ -32,3 +32,16 @@ export function severity(gap: Pick<Gap, 'fullyUncovered' | 'branches'>): Severit
   }
   return gap.branches >= DENSE ? 'medium' : 'low'
 }
+
+// The band leads the sort, the score breaks ties inside it. Ranking by raw score alone put a
+// CRITICAL row below a MEDIUM one — which makes the band decoration instead of triage.
+const RANK: Record<Severity, number> = { critical: 0, high: 1, medium: 2, low: 3 }
+
+/**
+ * Triage order: worst first. Every audience sorts the same way — the terminal, the PR comment,
+ * the HTML and the agent's briefing. Two orders that disagree would be two answers to "what do I
+ * do first", and the agent works top to bottom.
+ */
+export function ranked(gaps: Gap[]): Gap[] {
+  return [...gaps].sort((a, b) => RANK[severity(a)] - RANK[severity(b)] || b.score - a.score)
+}

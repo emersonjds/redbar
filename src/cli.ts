@@ -1,24 +1,79 @@
 #!/usr/bin/env node
-import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { basename, join, resolve } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { agentById, detectAgent } from './agents.js'
+import { renderBriefing, type Conventions } from './briefing.js'
 import { detect } from './detect.js'
-import { inspect } from './engine.js'
+import { inspect, type Inspection, type InspectOptions } from './engine.js'
+import { executeGaps, type Effects } from './execute.js'
+import { explain, matchGaps } from './explain.js'
 import type { Language } from './languages.js'
-import { renderHtml, renderJson, renderText } from './report.js'
+import { serve, type ToolArgs, type ToolBox } from './mcp.js'
+import { reconcile } from './outcome.js'
+import { htmlToPdf } from './pdf.js'
+import {
+  renderHtml,
+  renderJson,
+  renderMarkdown,
+  renderOutcomeHtml,
+  renderOutcomeMarkdown,
+  renderText,
+} from './report.js'
 import { selectRunner } from './runner.js'
-import { severity, type Severity } from './severity.js'
-import type { Gap } from './types.js'
+import { ranked, severity, type Severity } from './severity.js'
+import type { Gap, TestKind } from './types.js'
 
 const HELP = `redbar — test-coverage gaps in what changed, zero-LLM
 
 Usage:
-  redbar inspect [path] [--base <ref>] [--json] [--html <file>] [--out <dir>] [--top <n>]
+  redbar briefing [path] [--all] [--base <ref>] [--out <file>]   the testing brief, for your agent
+  redbar execute [path] [--agent <id>] [--all] [--base <ref>] [--max <n>]   hand the gaps to your agent
+  redbar explain [symbol] [--all] [--path <dir>] [--base <ref>]  where a number came from
+  redbar inspect [path] [--all] [--base <ref>] [--json] [--html <file>] [--md <file>] [--out <dir>] [--top <n>]
+  redbar mcp [path]                                              MCP server on stdio
   redbar init [path]
-  redbar ci [path] [--max-critical <n>] [--max-high <n>] [--base <ref>]
+  redbar ci [path] [--max-critical <n>] [--max-high <n>] [--base <ref>] [--md <file>]
   redbar --help
   redbar --version
+
+  --all   scan the whole repository instead of the diff. The diff is the default: nobody takes a
+          legacy repo to 80%, everybody can avoid making it worse. Use --all for the first look.
 `
+
+const LAYERS: TestKind[] = ['unit', 'integration', 'e2e']
+
+/**
+ * The standard for each layer: the one redbar ships, then the project's own deltas appended.
+ *
+ * A project override is for the genuinely local choice no library documents (MSW or nock? which
+ * fixture factory?). It is APPENDED, never a replacement — a project that overrides everything has
+ * not adopted a standard, it has written a house style with extra steps.
+ */
+function readConventions(root: string, language: Language): Conventions {
+  const conventions: Conventions = {}
+
+  for (const layer of LAYERS) {
+    const shipped = fileURLToPath(
+      new URL(`../conventions/${language.id}/${layer}.md`, import.meta.url),
+    )
+    const project = join(root, '.redbar', 'conventions', language.id, `${layer}.md`)
+    const parts = [shipped, project].filter(existsSync).map((p) => readFileSync(p, 'utf8'))
+
+    if (parts.length > 0) conventions[layer] = parts.join('\n\n---\n\n')
+  }
+
+  return conventions
+}
+
+function briefingFor(root: string, inspection: Inspection): string {
+  return renderBriefing(
+    inspection,
+    readConventions(root, inspection.language),
+    basename(resolve(root)),
+  )
+}
 
 type Flags = Record<string, string | boolean>
 
@@ -37,6 +92,25 @@ function parseArgs(argv: string[], valueFlags: Set<string>): { positional: strin
     }
   }
   return { positional, flags }
+}
+
+/**
+ * The options every reporting command shares.
+ *
+ * `--all` deliberately does NOT reach `redbar ci`: a gate on the whole repository fails the first
+ * pull request of every legacy project, gets switched off that afternoon, and takes the gate that
+ * WOULD have worked down with it. The gate judges the diff. `--all` is for looking.
+ */
+function opts(flags: Flags): InspectOptions {
+  const base = typeof flags.base === 'string' ? flags.base : undefined
+  return {
+    // a human at a terminal asked for an answer, not for a chore: if the report is missing, run
+    // the project's own coverage command. `--no-run` restores the "print the command and stop"
+    // behaviour, which is what a CI job with a separate coverage step wants.
+    run: flags['no-run'] !== true,
+    ...(flags.all ? { all: true } : {}),
+    ...(base ? { base } : {}),
+  }
 }
 
 function readVersion(): string {
@@ -71,11 +145,10 @@ function readManifest(root: string, language: Language): string {
 }
 
 function runInspect(argv: string[]): void {
-  const { positional, flags } = parseArgs(argv, new Set(['base', 'html', 'out', 'top']))
+  const { positional, flags } = parseArgs(argv, new Set(['base', 'html', 'md', 'out', 'top']))
   const root = positional[0] ?? '.'
-  const base = typeof flags.base === 'string' ? flags.base : undefined
 
-  const inspection = inspect(root, base ? { base } : {})
+  const inspection = inspect(root, opts(flags))
 
   if (flags.json) {
     console.log(renderJson(inspection))
@@ -88,9 +161,327 @@ function runInspect(argv: string[]): void {
     writeFileSync(flags.html, renderHtml(inspection, basename(resolve(root))))
   }
 
+  // no limits: `inspect` reports, it does not judge. A verdict here would imply a gate that
+  // is not running.
+  if (typeof flags.md === 'string') {
+    writeFileSync(flags.md, renderMarkdown(inspection))
+  }
+
   const outDir = typeof flags.out === 'string' ? flags.out : '.redbar'
   mkdirSync(outDir, { recursive: true })
   writeFileSync(join(outDir, 'gaps.json'), renderJson(inspection))
+}
+
+/**
+ * The document — in the three forms the three audiences actually accept.
+ *
+ *   TESTING.md   the agent reads this. Plain markdown, self-contained, no tool required.
+ *   REDBAR.html  the developer opens this. Ranked table, print stylesheet.
+ *   REDBAR.pdf   management gets this. Same numbers; nobody forwards a terminal screenshot.
+ *
+ * One inspection, three renderings. They cannot disagree, which is the only property that makes a
+ * report worth sending to someone who cannot re-run it.
+ */
+function runBriefing(argv: string[]): void {
+  const { positional, flags } = parseArgs(argv, new Set(['base', 'out', 'pdf']))
+  const root = positional[0] ?? '.'
+
+  const inspection = inspect(root, opts(flags))
+  const doc = briefingFor(root, inspection)
+  const repo = basename(resolve(root))
+
+  console.log(doc)
+
+  const dir = join(root, '.redbar')
+  mkdirSync(dir, { recursive: true })
+
+  const mdPath = typeof flags.out === 'string' ? flags.out : join(dir, 'TESTING.md')
+  const htmlPath = join(dir, 'REDBAR.html')
+  const html = renderHtml(inspection, repo)
+
+  writeFileSync(mdPath, doc)
+  writeFileSync(htmlPath, html)
+
+  const pdfPath = typeof flags.pdf === 'string' ? flags.pdf : join(dir, 'REDBAR.pdf')
+  const printed = htmlToPdf(html, resolve(pdfPath))
+
+  process.stderr.write(`\nredbar: ${mdPath} — the brief, for your agent\n`)
+  process.stderr.write(`redbar: ${htmlPath} — the table, for you\n`)
+  process.stderr.write(
+    printed
+      ? `redbar: ${pdfPath} — the same numbers, for whoever asks for a PDF\n`
+      : `redbar: no Chrome/Chromium/Edge found, so no PDF. Open ${htmlPath} and press Cmd+P — the\n` +
+          `redbar: print stylesheet is already in it, and the result is the same file.\n`,
+  )
+}
+
+/**
+ * `execute` refuses to run on a dirty working tree. Pure, so it can be tested without a repo.
+ *
+ * The scope gate in execute.ts subtracts a baseline of already-changed files before judging what
+ * the agent touched — otherwise a human's uncommitted edit would be reverted as if the agent had
+ * written it. That baseline is also the hole: a product file that is ALREADY dirty when the run
+ * starts is inside the baseline, so an agent that then edits that same file is invisible to the
+ * gate. redbar cannot tell its own writes from the developer's, and `git checkout --` has no
+ * reflog and no stash to recover from. Refuse, like `git rebase` does, and for the same reason.
+ * No --force: the flag would exist to be passed by the person about to lose their work.
+ */
+export function dirtyTreeError(porcelain: string): string | null {
+  const dirty = porcelain
+    .split('\n')
+    .map((line) => {
+      const path = line.slice(3).trim()
+      // a porcelain rename reads "old -> new"; the new path is the one that exists on disk
+      const arrow = path.indexOf(' -> ')
+      return arrow >= 0 ? path.slice(arrow + 4) : path
+    })
+    .filter(Boolean)
+
+  if (dirty.length === 0) return null
+
+  return [
+    `redbar: the working tree is not clean. execute will not run.`,
+    '',
+    ...dirty.map((file) => `  ${file}`),
+    '',
+    `execute writes test files, and reverts whatever the agent should not have touched. It cannot`,
+    `tell its own writes from yours: a file that was already modified when the run started is`,
+    `indistinguishable from one the agent edited, and reverting it would destroy your work — there`,
+    `is no reflog and no stash behind \`git checkout --\`.`,
+    '',
+    `Commit or stash first, then run redbar execute again.`,
+  ].join('\n')
+}
+
+/**
+ * Hand each gap to the agent, gate what it wrote, then MEASURE what changed.
+ *
+ * The one command in redbar that calls a language model. Everything it does with the answer is
+ * mechanical: git says which files were touched, a regex says whether the test asserts anything,
+ * the runner says whether it passes, and a fresh coverage report says whether the gap is closed.
+ * The agent writes; redbar grades.
+ */
+function runExecute(argv: string[]): void {
+  const { positional, flags } = parseArgs(argv, new Set(['agent', 'base', 'max']))
+  const root = positional[0] ?? '.'
+
+  const git = (args: string[]) =>
+    execFileSync('git', args, { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+
+  // before anything else: nothing below this line is safe on a tree redbar did not start clean.
+  const dirty = dirtyTreeError(git(['-c', 'core.quotePath=false', 'status', '--porcelain']))
+  if (dirty) throw new Error(dirty)
+
+  const onPath = (bin: string): boolean => {
+    try {
+      execFileSync('command', ['-v', bin], { cwd: root, stdio: 'ignore', shell: true })
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  const requested = typeof flags.agent === 'string' ? flags.agent : null
+  const agent = requested ? agentById(requested) : detectAgent(onPath)
+
+  if (!agent) {
+    throw new Error(
+      requested
+        ? `redbar: unknown agent "${requested}".`
+        : `redbar: no coding agent found on PATH. Looked for: claude, codex, copilot, gemini, cursor-agent.\n` +
+          `Install one, or name it with --agent <id>.`,
+    )
+  }
+
+  const before = inspect(root, opts(flags))
+  if (before.gaps.length === 0) {
+    console.log('redbar: no gaps. Nothing for the agent to do.')
+    return
+  }
+
+  let max = before.gaps.length
+  if (typeof flags.max === 'string') {
+    max = Number(flags.max)
+    if (!Number.isInteger(max) || max < 1) {
+      throw new Error(`redbar: --max must be a positive integer, got "${flags.max}"`)
+    }
+  }
+  const gaps = ranked(before.gaps).slice(0, max)
+
+  process.stderr.write(`redbar: agent ${agent.id} · ${gaps.length} gap(s), worst first\n\n`)
+
+  const read = (file: string): string | null => {
+    const p = join(root, file)
+    return existsSync(p) ? readFileSync(p, 'utf8') : null
+  }
+
+  const effects: Effects = {
+    // 10 minutes: a real agent writing a real e2e test against a real convention is not fast, and
+    // killing it at 60s produces a needs-human that means nothing but "we were impatient"
+    runAgent: (prompt) =>
+      execFileSync(agent.bin, agent.args(prompt), {
+        cwd: root,
+        encoding: 'utf8',
+        timeout: 600_000,
+        maxBuffer: 64 * 1024 * 1024,
+      }),
+
+    // git, not the agent's word. An agent that says "I wrote calc.test.ts" and wrote nothing is
+    // indistinguishable, from its own output, from one that did.
+    changedFiles: () =>
+      git(['-c', 'core.quotePath=false', 'status', '--porcelain'])
+        .split('\n')
+        .map((line) => {
+          const path = line.slice(3).trim()
+          // a porcelain rename reads "old -> new"; the new path is the one that exists on disk
+          const arrow = path.indexOf(' -> ')
+          return arrow >= 0 ? path.slice(arrow + 4) : path
+        })
+        .filter(Boolean),
+
+    readFile: read,
+
+    deleteFile: (file) => rmSync(join(root, file), { force: true }),
+
+    // an untracked file has nothing to check out — removing it IS the revert
+    revertFile: (file) => {
+      try {
+        git(['checkout', '--', file])
+      } catch {
+        rmSync(join(root, file), { force: true })
+      }
+    },
+
+    // ONE test file, not the suite. Running everything would let an unrelated pre-existing failure
+    // condemn a test the agent got right, and would take minutes per gap instead of seconds.
+    runTest: (testFile) => {
+      try {
+        execFileSync('sh', ['-c', `${testRunCommand(before.runner.name)} ${testFile}`], {
+          cwd: root,
+          stdio: 'ignore',
+          timeout: 300_000,
+        })
+        return true
+      } catch {
+        return false
+      }
+    },
+
+    onVerdict: (a, i, total) =>
+      process.stderr.write(
+        `  [${String(i + 1).padStart(2)}/${total}] ${a.verdict.padEnd(15)} ${a.symbol ?? a.file}\n`,
+      ),
+  }
+
+  const attempts = executeGaps(gaps, before.language, readConventions(root, before.language), effects, read)
+
+  // THE SECOND MEASUREMENT. Everything above was the agent working; this is redbar checking.
+  //
+  // The report is deleted first, and that is not housekeeping. ensureCoverage only runs the
+  // coverage command when the report is ABSENT — with the old one still on disk, `run: true`
+  // reads it straight back, every line reads as uncovered exactly as before, and every gap the
+  // agent genuinely closed is reported `open`. Deleting it is what makes this a measurement.
+  process.stderr.write(`\nredbar: re-measuring — ${before.runner.coverageCommand}\n`)
+  rmSync(join(root, before.runner.reportPath), { force: true })
+  const after = inspect(root, { ...opts(flags), run: true })
+
+  const outcomes = reconcile(gaps, after.gaps, attempts)
+  const repo = basename(resolve(root))
+
+  const md = renderOutcomeMarkdown(after, outcomes, agent.id)
+  const html = renderOutcomeHtml(after, outcomes, agent.id, repo)
+
+  const dir = join(root, '.redbar')
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, 'OUTCOME.md'), md)
+  writeFileSync(join(dir, 'OUTCOME.html'), html)
+  const printed = htmlToPdf(html, resolve(join(dir, 'OUTCOME.pdf')))
+
+  console.log(md)
+  process.stderr.write(`\nredbar: ${join(dir, 'OUTCOME.md')} — what happened, for the repo\n`)
+  process.stderr.write(`redbar: ${join(dir, 'OUTCOME.html')} — the same, for you\n`)
+  if (printed) process.stderr.write(`redbar: ${join(dir, 'OUTCOME.pdf')} — the same, for whoever asks\n`)
+}
+
+/**
+ * How to run ONE test file, per runner. Registry-shaped; move it into languages.ts if it grows.
+ *
+ * ponytail: the JVM entries take a class name where the others take a path, so maven and gradle
+ * only work when the test file's basename IS the class. Fix when a JVM repo actually runs execute.
+ */
+function testRunCommand(runner: string): string {
+  const commands: Record<string, string> = {
+    vitest: 'npx vitest run',
+    jest: 'npx jest',
+    pytest: 'python -m pytest',
+    phpunit: 'vendor/bin/phpunit',
+    'cargo-llvm-cov': 'cargo test',
+    maven: 'mvn -q test -Dtest=',
+    gradle: './gradlew test --tests',
+    'go-test': 'go test',
+  }
+  return commands[runner] ?? 'npm test --'
+}
+
+/** The audit. `redbar explain Checkout` — where every number in that row came from. */
+function runExplain(argv: string[]): void {
+  const { positional, flags } = parseArgs(argv, new Set(['path', 'base']))
+  const root = typeof flags.path === 'string' ? flags.path : '.'
+  const query = positional[0] ?? ''
+
+  const inspection = inspect(root, opts(flags))
+  const matched = matchGaps(inspection.gaps, query)
+
+  if (matched.length === 0) {
+    // an empty result is an answer, not a failure — and inventing a near miss would be the one
+    // thing this command exists to prevent
+    console.log(
+      query
+        ? `redbar: no gap matches "${query}". Run \`redbar inspect\` to see the ${inspection.gaps.length} that exist.`
+        : 'redbar: no gaps. Nothing to explain.',
+    )
+    return
+  }
+
+  console.log(matched.map((gap) => explain(inspection, gap)).join('\n\n───\n\n'))
+}
+
+/** The MCP server. The engine, exposed to whatever agent the developer already uses. */
+function runMcp(argv: string[]): void {
+  const { positional } = parseArgs(argv, new Set())
+  const defaultRoot = positional[0] ?? '.'
+
+  const rootOf = (args: ToolArgs) => (typeof args.path === 'string' ? args.path : defaultRoot)
+
+  const inspectFor = (args: ToolArgs): Inspection => {
+    const root = rootOf(args)
+    const base = typeof args.base === 'string' ? args.base : undefined
+    const inspection = inspect(root, { ...(args.all === true ? { all: true } : {}), ...(base ? { base } : {}) })
+
+    // The developer who just connected redbar is standing on the base branch, where the diff is
+    // empty. Answering "0 gaps" to someone with 400 untested functions is a true statement and a
+    // useless one — they asked what to test, not what they changed. Fall back to the whole repo,
+    // and the base field in the output says which question was answered.
+    if (inspection.gaps.length === 0 && args.all !== false) {
+      return inspect(root, { all: true })
+    }
+    return inspection
+  }
+
+  const tools: ToolBox = {
+    redbar_inspect: (args) => renderText(inspectFor(args)),
+    redbar_briefing: (args) => briefingFor(rootOf(args), inspectFor(args)),
+    redbar_explain: (args) => {
+      const inspection = inspectFor(args)
+      const query = typeof args.symbol === 'string' ? args.symbol : ''
+      const matched = matchGaps(inspection.gaps, query)
+
+      if (matched.length === 0) return `redbar: no gap matches "${query}".`
+      return matched.map((gap) => explain(inspection, gap)).join('\n\n───\n\n')
+    },
+  }
+
+  serve(tools)
 }
 
 function runInit(argv: string[]): void {
@@ -123,14 +514,24 @@ function runInit(argv: string[]): void {
 }
 
 function runCi(argv: string[]): number {
-  const { positional, flags } = parseArgs(argv, new Set(['base', 'max-critical', 'max-high']))
+  const { positional, flags } = parseArgs(
+    argv,
+    new Set(['base', 'max-critical', 'max-high', 'md']),
+  )
   const root = positional[0] ?? '.'
   const base = typeof flags.base === 'string' ? flags.base : undefined
   const maxCritical = typeof flags['max-critical'] === 'string' ? Number(flags['max-critical']) : 0
   const maxHigh = typeof flags['max-high'] === 'string' ? Number(flags['max-high']) : Infinity
 
   const inspection = inspect(root, base ? { base } : {})
-  const { failed, counts } = gateResult(inspection.gaps, { maxCritical, maxHigh })
+  const limits = { maxCritical, maxHigh }
+  const { failed, counts } = gateResult(inspection.gaps, limits)
+
+  // written before the exit code is returned: a failing gate is exactly when the reviewer most
+  // needs to read why, so the comment must exist even on the run that turns the PR red
+  if (typeof flags.md === 'string') {
+    writeFileSync(flags.md, renderMarkdown(inspection, limits))
+  }
 
   console.log(`redbar ci — ${inspection.gaps.length} gaps`)
   console.log(`  critical: ${counts.critical}  (max ${maxCritical})`)
@@ -157,6 +558,18 @@ function main(): void {
 
   try {
     switch (command) {
+      case 'briefing':
+        runBriefing(argv.slice(1))
+        break
+      case 'execute':
+        runExecute(argv.slice(1))
+        break
+      case 'explain':
+        runExplain(argv.slice(1))
+        break
+      case 'mcp':
+        runMcp(argv.slice(1))
+        break
       case 'inspect':
         runInspect(argv.slice(1))
         break

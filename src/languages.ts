@@ -195,7 +195,7 @@ export const LANGUAGES: Language[] = [
     standards: {
       unit: { name: 'the JUnit 5 User Guide', url: 'https://junit.org/junit5/docs/current/user-guide/' },
       integration: { name: 'Testcontainers for Java', url: 'https://java.testcontainers.org/' },
-      e2e: { name: 'Playwright for Java — Best Practices', url: 'https://playwright.dev/java/docs/best-practices' },
+      e2e: { name: 'Playwright Best Practices', url: 'https://playwright.dev/docs/best-practices' },
     },
     canFix: true,
   },
@@ -258,7 +258,7 @@ export const LANGUAGES: Language[] = [
     standards: {
       unit: { name: 'the pytest documentation', url: 'https://docs.pytest.org/en/stable/how-to/index.html' },
       integration: { name: 'Testcontainers for Python', url: 'https://testcontainers-python.readthedocs.io/' },
-      e2e: { name: 'Playwright for Python — Best Practices', url: 'https://playwright.dev/python/docs/best-practices' },
+      e2e: { name: 'Playwright Best Practices', url: 'https://playwright.dev/docs/best-practices' },
     },
     canFix: true,
   },

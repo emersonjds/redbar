@@ -60,6 +60,15 @@ export type Language = {
   /** matches an exported/public symbol declaration; group 1 = the name */
   symbolPatterns: RegExp[]
   /**
+   * How an assertion is spelled in this language's test idiom.
+   *
+   * `execute` counts these in the file the agent wrote. Zero assertions means the test executes the
+   * code and proves nothing: coverage rises, the suite goes green, and the gap looks closed. That is
+   * the single most common failure mode of an AI test generator, and it is the reason the gate is
+   * mechanical instead of a sentence in a prompt.
+   */
+  assertionPatterns: RegExp[]
+  /**
    * Test libs `init` proposes for the layers that are language-wide. `unit` is NOT here:
    * it belongs to the runner (jest vs vitest), and putting it here is what made init tell a
    * jest project to install vitest. The human approves; the tool never installs.
@@ -98,6 +107,7 @@ export const LANGUAGES: Language[] = [
       /^\s*pub\s+enum\s+(\w+)/,
       /^\s*impl\s+(?:\w+\s+for\s+)?(\w+)/,
     ],
+    assertionPatterns: [/\bassert(_eq|_ne)?!\s*\(/, /\bpanic!\s*\(/],
     testLibs: {
       integration: ['tokio', 'reqwest'],
       e2e: ['@playwright/test'],
@@ -128,6 +138,7 @@ export const LANGUAGES: Language[] = [
     sourceExtensions: ['.go'],
     testFilePattern: /_test\.go$/,
     symbolPatterns: [/^func\s+(?:\([^)]*\)\s+)?([A-Z]\w*)/, /^type\s+([A-Z]\w*)/],
+    assertionPatterns: [/\bassert\.\w+\s*\(/, /\brequire\.\w+\s*\(/, /\bt\.(Error|Fatal)\w*\s*\(/],
     testLibs: {
       integration: ['github.com/testcontainers/testcontainers-go'],
       e2e: ['@playwright/test'],
@@ -168,6 +179,7 @@ export const LANGUAGES: Language[] = [
       /^\s*public\s+(?:abstract\s+|final\s+)?class\s+(\w+)/,
       /^\s*public\s+(?:static\s+|final\s+|synchronized\s+|abstract\s+)*[\w<>\[\].]+\s+(\w+)\s*\(/,
     ],
+    assertionPatterns: [/\bassert\w*\s*\(/, /\bverify\s*\(/],
     testLibs: {
       integration: [
         'org.springframework.boot:spring-boot-starter-test',
@@ -207,6 +219,7 @@ export const LANGUAGES: Language[] = [
       /^\s*(?:final\s+|abstract\s+)?class\s+(\w+)/,
       /^\s*public\s+(?:static\s+)?function\s+(\w+)/,
     ],
+    assertionPatterns: [/\$this->assert\w+\s*\(/, /\bassert\w*\s*\(/],
     testLibs: {
       integration: ['phpunit/phpunit', 'guzzlehttp/guzzle'],
       e2e: ['@playwright/test'],
@@ -236,6 +249,7 @@ export const LANGUAGES: Language[] = [
     sourceExtensions: ['.py'],
     testFilePattern: /(^|\/)tests?\/|(^|\/)test_[^\/]+\.py$|_test\.py$/,
     symbolPatterns: [/^def\s+(\w+)/, /^class\s+(\w+)/],
+    assertionPatterns: [/^\s*assert\b/m, /\bpytest\.raises\s*\(/, /\bself\.assert\w+\s*\(/],
     testLibs: {
       integration: ['pytest', 'httpx', 'testcontainers'],
       e2e: ['pytest-playwright'],
@@ -292,6 +306,7 @@ export const LANGUAGES: Language[] = [
       /^(?:export\s+)?(?:abstract\s+)?class\s+(\w+)/,
       /^(?:export\s+)?(?:const|let)\s+(\w+)/,
     ],
+    assertionPatterns: [/\bexpect\s*\(/, /\bassert\w*\s*\(/],
     testLibs: {
       integration: ['supertest'],
       e2e: ['@playwright/test'],

@@ -65,10 +65,11 @@ break:
   `expectExceptionMessage(...)` and `expectExceptionMessageMatches(...)` — use one of those alongside
   it. Asserting only the exception class and not its message is asserting half the contract.
 
-Prefer `assertSame()` over `assertEquals()`. The docs are explicit about the difference: `assertSame()`
-checks identity with `===` (type **and** value), `assertEquals()` checks equality with `==`. `0 ==
-'foo'` is `true` in PHP; `0 === 'foo'` is not. Default to `assertSame()` and drop to `assertEquals()`
-only when you deliberately want the loose comparison.
+Prefer `assertSame()` over `assertEquals()`. The docs draw the line clearly: `assertSame()` checks
+that value **and type** are identical (`===`), while `assertEquals()` checks value only (`==`) and so
+passes when a method returns `'20'` where you meant `20`, or `1` where you meant `true`. That gap is
+exactly where the bug hides. Default to `assertSame()`, and drop to `assertEquals()` only when you
+deliberately do not care about the type.
 
 **Do not assert on internals.** No reaching into private properties, no asserting call counts on
 things that are not the contract. A test that breaks when someone renames a private property is a

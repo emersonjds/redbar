@@ -1,0 +1,63 @@
+name: redbar
+
+# redbar run against redbar. Every serious bug in this tool was found by running it on a real
+# repository, and this repository is the one we can never forget to run it on.
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  gaps:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # redbar diffs against the base branch — a shallow clone has no base to diff against
+          # and every gap silently disappears
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: coverage
+        run: npm run coverage
+
+      # continue-on-error so the comment still gets written on the run that turns the PR red —
+      # that is precisely the run a reviewer needs to read. The gate is re-raised at the end.
+      - name: redbar ci
+        id: gate
+        continue-on-error: true
+        run: npx tsx src/cli.ts ci . --base origin/${{ github.base_ref }} --md redbar.md
+
+      # Edits the comment it wrote last push instead of stacking a new one. A PR with eleven
+      # redbar comments is a PR where nobody reads the redbar comment.
+      #
+      # Fork PRs get a read-only token, so this step is skipped there — the gate still runs and
+      # still fails the build, it just cannot leave the table behind. That is GitHub's rule, not
+      # ours, and the alternative (pull_request_target) hands a write token to unreviewed code.
+      - name: comment on the pull request
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.number }}
+        run: |
+          id=$(gh api "repos/$REPO/issues/$PR/comments" \
+                --jq 'map(select(.body | startswith("<!-- redbar -->"))) | .[0].id // empty')
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$id" -F body=@redbar.md
+          else
+            gh api -X POST "repos/$REPO/issues/$PR/comments" -F body=@redbar.md
+          fi
+
+      - name: fail the pull request when the gate failed
+        if: steps.gate.outcome == 'failure'
+        run: exit 1

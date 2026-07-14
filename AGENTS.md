@@ -27,6 +27,11 @@ because it arrives wearing the compiler's uniform.
 5. **Deterministic output.** Same input, same order, byte for byte. A report that reshuffles cannot
    be diffed in a PR, and the CI gate would flap.
 6. **Never install anything into a user's project.** `init` prints the command; the human runs it.
+7. **The agent never grades itself.** `execute` is the only command that calls a model. Every
+   verdict it produces except `needs-human`, `timeout`, and `no-output` is measured — by git, by a
+   regex, by the test runner, or by a fresh coverage report. If you are about to let the agent's own
+   output decide whether a gap closed, stop: that is the failure this whole project exists to
+   prevent, reintroduced one layer down.
 
 ## Testing this project
 

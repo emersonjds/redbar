@@ -382,8 +382,8 @@ Honest about what exists today. The engine is done and exercised on real reposit
 | ✅ **`execute`** | Hands each gap to whichever coding agent is installed, gates what it wrote, then re-measures. `OUTCOME.md` reports the measured verdicts and the agent's own account, never mixed |
 | ✅ **Agent skills** | `/redbar.inspect`, `/redbar.fix`, `/redbar.init` — the agent reads the gap and the spec, writes the test, **runs it**, and never leaves a red one |
 | ✅ **MCP server** | `redbar mcp` — same engine, exposed to any MCP client |
-| ✅ **Conventions** | TypeScript: unit, integration, e2e — each traceable to the library's own docs |
-| 🚧 **Conventions** for Java, Python, Rust, PHP | Same five questions, each ecosystem's idiom |
+| ✅ **Conventions** | TypeScript, Python, Java, Rust, PHP — unit, integration, e2e, each traceable to the library's own docs |
+| 🚧 **Conventions** for Go | Same five questions, each ecosystem's idiom |
 | 🚧 **`fix` worker pool** | Batch mode for CI: N gaps in parallel, partitioned by target file so two workers can never collide |
 
 The design documents are in [`docs/superpowers/specs/`](docs/superpowers/specs/), and the implementation plans in [`docs/superpowers/plans/`](docs/superpowers/plans/).

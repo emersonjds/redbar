@@ -13,6 +13,7 @@ import type { Language } from './languages.js'
 import { serve, type ToolArgs, type ToolBox } from './mcp.js'
 import { reconcile } from './outcome.js'
 import { htmlToPdf } from './pdf.js'
+import { detectProfile } from './profile.js'
 import {
   renderHtml,
   renderJson,
@@ -21,7 +22,7 @@ import {
   renderOutcomeMarkdown,
   renderText,
 } from './report.js'
-import { selectRunner } from './runner.js'
+import { readManifest, selectE2eTool, selectRunner } from './runner.js'
 import { ranked, severity, type Severity } from './severity.js'
 import type { Gap, TestKind } from './types.js'
 
@@ -53,10 +54,12 @@ const LAYERS: TestKind[] = ['unit', 'integration', 'e2e']
  */
 function readConventions(root: string, language: Language): Conventions {
   const conventions: Conventions = {}
+  const e2eFile = selectE2eTool(root, language).conventionFile
 
   for (const layer of LAYERS) {
+    const fileName = layer === 'e2e' ? e2eFile : `${layer}.md`
     const shipped = fileURLToPath(
-      new URL(`../conventions/${language.id}/${layer}.md`, import.meta.url),
+      new URL(`../conventions/${language.id}/${fileName}`, import.meta.url),
     )
     const project = join(root, '.redbar', 'conventions', language.id, `${layer}.md`)
     const parts = [shipped, project].filter(existsSync).map((p) => readFileSync(p, 'utf8'))
@@ -68,10 +71,15 @@ function readConventions(root: string, language: Language): Conventions {
 }
 
 function briefingFor(root: string, inspection: Inspection): string {
+  const { language } = inspection
+  const profile = detectProfile(readManifest(root, language))
+  const e2eStandard = selectE2eTool(root, language).standard
   return renderBriefing(
     inspection,
-    readConventions(root, inspection.language),
+    readConventions(root, language),
     basename(resolve(root)),
+    profile,
+    e2eStandard,
   )
 }
 
@@ -134,16 +142,6 @@ export function gateResult(
   return { failed, counts }
 }
 
-// Duplicated from runner.ts's private readManifest: it is 5 lines and that file is off-limits
-// to edit for this task, so a private export is not an option here.
-function readManifest(root: string, language: Language): string {
-  return language.markers
-    .map((m) => join(root, m))
-    .filter((p) => existsSync(p))
-    .map((p) => readFileSync(p, 'utf8'))
-    .join('\n')
-}
-
 function runInspect(argv: string[]): void {
   const { positional, flags } = parseArgs(argv, new Set(['base', 'html', 'md', 'out', 'top']))
   const root = positional[0] ?? '.'
@@ -158,7 +156,14 @@ function runInspect(argv: string[]): void {
   }
 
   if (typeof flags.html === 'string') {
-    writeFileSync(flags.html, renderHtml(inspection, basename(resolve(root))))
+    writeFileSync(
+      flags.html,
+      renderHtml(
+        inspection,
+        basename(resolve(root)),
+        detectProfile(readManifest(root, inspection.language)),
+      ),
+    )
   }
 
   // no limits: `inspect` reports, it does not judge. A verdict here would imply a gate that
@@ -197,7 +202,8 @@ function runBriefing(argv: string[]): void {
 
   const mdPath = typeof flags.out === 'string' ? flags.out : join(dir, 'TESTING.md')
   const htmlPath = join(dir, 'REDBAR.html')
-  const html = renderHtml(inspection, repo)
+  const profile = detectProfile(readManifest(root, inspection.language))
+  const html = renderHtml(inspection, repo, profile)
 
   writeFileSync(mdPath, doc)
   writeFileSync(htmlPath, html)

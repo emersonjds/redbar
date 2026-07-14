@@ -219,7 +219,7 @@ export const LANGUAGES: Language[] = [
       /^\s*(?:final\s+|abstract\s+)?class\s+(\w+)/,
       /^\s*public\s+(?:static\s+)?function\s+(\w+)/,
     ],
-    assertionPatterns: [/\$this->assert\w+\s*\(/, /\bassert\w*\s*\(/],
+    assertionPatterns: [/\bassert\w*\s*\(/],
     testLibs: {
       integration: ['phpunit/phpunit', 'guzzlehttp/guzzle'],
       e2e: ['@playwright/test'],

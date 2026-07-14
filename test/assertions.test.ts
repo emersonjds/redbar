@@ -42,6 +42,13 @@ describe('countAssertions', () => {
     expect(countAssertions('// expect(x).toBe(1)\nconst s = "expect(y).toBe(2)"', byId('ts')!)).toBe(0)
   })
 
+  it('counts each PHPUnit assertion once, not twice', () => {
+    // `\bassert\w*\(` already matches inside `$this->assertEquals(` — a second, more specific
+    // pattern for the same call double-counts every idiomatic PHPUnit assertion
+    const source = '$this->assertEquals(1, 2);\n$this->assertTrue(true);'
+    expect(countAssertions(source, byId('php')!)).toBe(2)
+  })
+
   it('every language in the registry declares how to spot an assertion', () => {
     for (const language of LANGUAGES) {
       expect(language.assertionPatterns.length).toBeGreaterThan(0)

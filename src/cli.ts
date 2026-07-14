@@ -229,7 +229,12 @@ function runBriefing(argv: string[]): void {
 export function dirtyTreeError(porcelain: string): string | null {
   const dirty = porcelain
     .split('\n')
-    .map((line) => line.slice(3).trim())
+    .map((line) => {
+      const path = line.slice(3).trim()
+      // a porcelain rename reads "old -> new"; the new path is the one that exists on disk
+      const arrow = path.indexOf(' -> ')
+      return arrow >= 0 ? path.slice(arrow + 4) : path
+    })
     .filter(Boolean)
 
   if (dirty.length === 0) return null
@@ -294,7 +299,13 @@ function runExecute(argv: string[]): void {
     return
   }
 
-  const max = typeof flags.max === 'string' ? Number(flags.max) : before.gaps.length
+  let max = before.gaps.length
+  if (typeof flags.max === 'string') {
+    max = Number(flags.max)
+    if (!Number.isInteger(max) || max < 1) {
+      throw new Error(`redbar: --max must be a positive integer, got "${flags.max}"`)
+    }
+  }
   const gaps = ranked(before.gaps).slice(0, max)
 
   process.stderr.write(`redbar: agent ${agent.id} · ${gaps.length} gap(s), worst first\n\n`)
@@ -320,7 +331,12 @@ function runExecute(argv: string[]): void {
     changedFiles: () =>
       git(['-c', 'core.quotePath=false', 'status', '--porcelain'])
         .split('\n')
-        .map((line) => line.slice(3).trim())
+        .map((line) => {
+          const path = line.slice(3).trim()
+          // a porcelain rename reads "old -> new"; the new path is the one that exists on disk
+          const arrow = path.indexOf(' -> ')
+          return arrow >= 0 ? path.slice(arrow + 4) : path
+        })
         .filter(Boolean),
 
     readFile: read,

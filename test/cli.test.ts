@@ -74,4 +74,11 @@ describe('dirtyTreeError', () => {
     const message = dirtyTreeError(' M src/a.ts\n') ?? ''
     expect(message).toMatch(/revert/i)
   })
+
+  it('decodes a git rename entry and reports the new path', () => {
+    const message = dirtyTreeError('R  old.ts -> new.ts\n')
+    expect(message).not.toBeNull()
+    expect(message).toContain('new.ts')
+    expect(message).not.toContain('old.ts')
+  })
 })

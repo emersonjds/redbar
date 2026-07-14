@@ -1,6 +1,7 @@
 // Pure renderers: string in/out, no disk access. Callers (scripts/*, cli.ts) do the writing.
 import type { Inspection } from './engine.js'
 import { isMeasured, type Outcome, type Verdict } from './outcome.js'
+import { kindPriority, profileLabel, type Profile } from './profile.js'
 import { ranked, severity, type Severity } from './severity.js'
 import type { Gap, TestKind } from './types.js'
 
@@ -146,7 +147,7 @@ const row = (g: Gap, i: number) => {
 }
 
 /** Self-contained HTML report with a print stylesheet — the browser makes the PDF. */
-export function renderHtml(inspection: Inspection, repoName: string): string {
+export function renderHtml(inspection: Inspection, repoName: string, profile: Profile): string {
   const { language, runner, base, gaps, stale } = inspection
   const byKind = (k: TestKind) => gaps.filter((g) => g.kind === k)
   const bySeverity = (s: Severity) => gaps.filter((g) => severity(g) === s)
@@ -154,6 +155,34 @@ export function renderHtml(inspection: Inspection, repoName: string): string {
   const uncoveredLines = gaps.reduce((n, g) => n + g.lines.length, 0)
   const files = new Set(gaps.map((g) => g.file)).size
   const rankedGaps = ranked(gaps)
+
+  const focusBlock =
+    profile === 'library'
+      ? ''
+      : (() => {
+          const rows = kindPriority(profile)
+            .map((kind) => {
+              const inKind = rankedGaps.filter((g) => g.kind === kind)
+              if (inKind.length === 0) return ''
+              const items = inKind
+                .map(
+                  (g) =>
+                    `<li><span class="kind kind-${g.kind}">${g.kind}</span> ` +
+                    `<span class="sym">${g.symbol ? esc(g.symbol) : '<em>—</em>'}</span> ` +
+                    `<span class="file">${esc(g.file)}:${g.lines[0]}</span></li>`,
+                )
+                .join('')
+              return `<ul class="focus-group">${items}</ul>`
+            })
+            .join('')
+          return `<div class="focus">
+            <h2>Focus for this project</h2>
+            <p>Detected: <b>${esc(profileLabel(profile))}</b>. The score and the table below are
+            unchanged — pure counting. This groups the same gaps by where ${esc(profileLabel(profile))}
+            breaks first.</p>
+            ${rows}
+          </div>`
+        })()
 
   return `<meta charset="utf-8">
 <title>redbar — ${esc(repoName)}</title>
@@ -204,6 +233,12 @@ export function renderHtml(inspection: Inspection, repoName: string): string {
   .lead { background: #f7f8fa; border-left: 3px solid #16181d; padding: 12px 16px;
           margin-bottom: 26px; font-size: 13.5px; }
   .lead b { font-weight: 650; }
+
+  .focus { margin: 0 0 26px; }
+  .focus h2 { font-size: 15px; margin: 0 0 6px; }
+  .focus p { color: #5c6370; font-size: 12.5px; margin: 0 0 10px; }
+  .focus-group { list-style: none; margin: 0 0 8px; padding: 0; }
+  .focus-group li { padding: 3px 0; font-size: 12.5px; display: flex; gap: 8px; align-items: baseline; }
 
   /* a report that is quietly out of date is worse than no report — it must not be possible to
      forward this PDF to a manager without the warning coming along */
@@ -306,6 +341,8 @@ export function renderHtml(inspection: Inspection, repoName: string): string {
     <b>No language model produced any of these numbers</b> — they come from the coverage report
     and <code>git diff</code>.
   </div>
+
+  ${focusBlock}
 
   <table>
     <thead>

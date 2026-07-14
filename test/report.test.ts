@@ -152,7 +152,7 @@ describe('renderMarkdown', () => {
 
 describe('renderHtml', () => {
   it('is self-contained HTML that names the repo, the gap symbol and severity counts', () => {
-    const html = renderHtml(inspection([gap({ symbol: 'divide' })]), 'my-repo')
+    const html = renderHtml(inspection([gap({ symbol: 'divide' })]), 'my-repo', 'library')
 
     expect(html).toContain('my-repo')
     expect(html).toContain('divide')
@@ -165,8 +165,33 @@ describe('renderHtml', () => {
     const html = renderHtml(
       inspection([gap({ symbol: '<script>', file: 'a&b.ts' })]),
       'repo',
+      'library',
     )
     expect(html).not.toContain('<script>')
     expect(html).toContain('&lt;script&gt;')
+  })
+})
+
+describe('renderHtml — the profile lens', () => {
+  const gaps = [
+    gap({ symbol: 'Checkout', kind: 'e2e' }),
+    gap({ symbol: 'fmt', kind: 'unit' }),
+  ]
+
+  it('names the profile in a Focus block for a frontend', () => {
+    const html = renderHtml(inspection(gaps), 'shop', 'frontend')
+    expect(html).toMatch(/Focus for this project/i)
+    expect(html).toMatch(/frontend/i)
+  })
+
+  it('omits the Focus block for a library', () => {
+    const html = renderHtml(inspection(gaps), 'lib', 'library')
+    expect(html).not.toMatch(/Focus for this project/i)
+  })
+
+  it('still renders the ranked table regardless of profile', () => {
+    const html = renderHtml(inspection(gaps), 'shop', 'backend')
+    expect(html).toContain('<table>')
+    expect(html).toContain('Checkout')
   })
 })

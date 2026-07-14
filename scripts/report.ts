@@ -6,7 +6,9 @@
 import { writeFileSync } from 'node:fs'
 import { basename, resolve } from 'node:path'
 import { inspect } from '../src/engine.js'
+import { detectProfile } from '../src/profile.js'
 import { renderHtml } from '../src/report.js'
+import { readManifest } from '../src/runner.js'
 
 const args = process.argv.slice(2)
 const outFlag = args.indexOf('--out')
@@ -20,7 +22,8 @@ if (!root) {
 }
 
 const inspection = inspect(root, base ? { base } : {})
-const html = renderHtml(inspection, basename(resolve(root)))
+const profile = detectProfile(readManifest(root, inspection.language))
+const html = renderHtml(inspection, basename(resolve(root)), profile)
 writeFileSync(out, html)
 
 const untested = inspection.gaps.filter((g) => g.fullyUncovered).length

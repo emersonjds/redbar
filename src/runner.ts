@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Language, Runner } from './languages.js'
+import type { E2eTool, Language, Runner } from './languages.js'
 
 /**
  * Which runner does this project actually use?
@@ -23,10 +23,22 @@ export function selectRunner(root: string, lang: Language): Runner {
   return found ?? lang.runners[0]!
 }
 
-function readManifest(root: string, lang: Language): string {
+export function readManifest(root: string, lang: Language): string {
   return lang.markers
     .map((m) => join(root, m))
     .filter((p) => existsSync(p))
     .map((p) => readFileSync(p, 'utf8'))
     .join('\n')
+}
+
+/**
+ * Which e2e tool does this project actually use? Same rule as selectRunner: read the manifest,
+ * first-match-wins, fall back to the last entry (the default). A project on Cypress must not be
+ * handed the Playwright convention — that is a test written to the wrong tool's idiom, the exact
+ * drift redbar exists to kill.
+ */
+export function selectE2eTool(root: string, lang: Language): E2eTool {
+  const manifest = readManifest(root, lang)
+  const found = lang.e2eTools.find((t) => t.detect.test(manifest))
+  return found ?? lang.e2eTools[lang.e2eTools.length - 1]!
 }

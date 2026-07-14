@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { LANGUAGES, byId } from '../src/languages.js'
-import { selectRunner } from '../src/runner.js'
+import { selectE2eTool, selectRunner } from '../src/runner.js'
 
 const ts = byId('ts')!
 const java = byId('java')!
@@ -12,6 +12,11 @@ function repo(files: Record<string, string>): string {
   const dir = mkdtempSync(join(tmpdir(), 'redbar-runner-'))
   for (const [name, content] of Object.entries(files)) writeFileSync(join(dir, name), content)
   return dir
+}
+
+// same shape as `repo`, one file — the e2e-tool tests only ever need a package.json
+function writeManifest(json: string): string {
+  return repo({ 'package.json': json })
 }
 
 describe('selectRunner', () => {
@@ -96,6 +101,35 @@ describe('runner unit libs', () => {
       for (const r of lang.runners) {
         expect(r.unitLibs.length, `${lang.id}/${r.name} has no unitLibs`).toBeGreaterThan(0)
       }
+    }
+  })
+})
+
+describe('selectE2eTool', () => {
+  it('picks Cypress when the manifest depends on it', () => {
+    // a real repo layout: cypress in devDependencies
+    const root = writeManifest('{"devDependencies":{"cypress":"13"}}')
+    const tool = selectE2eTool(root, ts)
+    expect(tool.id).toBe('cypress')
+    expect(tool.conventionFile).toBe('e2e.cypress.md')
+    expect(tool.standard.url).toMatch(/cypress\.io/)
+  })
+
+  it('picks Playwright when the manifest depends on it', () => {
+    const root = writeManifest('{"devDependencies":{"@playwright/test":"1.4"}}')
+    expect(selectE2eTool(root, ts).id).toBe('playwright')
+  })
+
+  it('falls back to the last entry (Playwright) when the manifest names no e2e tool', () => {
+    const root = writeManifest('{"dependencies":{"react":"18"}}')
+    const tool = selectE2eTool(root, ts)
+    expect(tool.id).toBe('playwright')
+    expect(tool.conventionFile).toBe('e2e.md')
+  })
+
+  it('every language declares at least one e2e tool, and the last is the default', () => {
+    for (const lang of LANGUAGES) {
+      expect(lang.e2eTools.length).toBeGreaterThan(0)
     }
   })
 })

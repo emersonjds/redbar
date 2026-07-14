@@ -32,6 +32,16 @@ export type Runner = {
  */
 export type Standard = { name: string; url: string }
 
+/**
+ * An end-to-end tool a project might use. Detected from the manifest exactly like the unit runner —
+ * "why Playwright and not Cypress?" is the same question as "why vitest and not jest?", and it has
+ * the same answer: don't assume, read it from the project.
+ *
+ * First whose `detect` matches the manifest wins; the LAST entry is the default, so the tool that
+ * ships with redbar's own convention (`e2e.md`) stays the fallback and nothing pre-existing breaks.
+ */
+export type E2eTool = { id: string; detect: RegExp; standard: Standard; conventionFile: string }
+
 export type Language = {
   id: string
   name: string
@@ -77,6 +87,8 @@ export type Language = {
   installCommand: (libs: string[]) => string
   /** the document the agent must follow for each layer. See `Standard`. */
   standards: Record<TestKind, Standard>
+  /** e2e tools this language can use; first match wins, last is the default. See `E2eTool`. */
+  e2eTools: E2eTool[]
   /** does the agent write tests in this language? false = inspect only */
   canFix: boolean
 }
@@ -118,6 +130,10 @@ export const LANGUAGES: Language[] = [
       integration: { name: 'The Rust Book, ch. 11.3 — Test Organization', url: 'https://doc.rust-lang.org/book/ch11-03-test-organization.html' },
       e2e: { name: 'Playwright Best Practices', url: 'https://playwright.dev/docs/best-practices' },
     },
+    // Playwright is the only realistic browser e2e tool wired today
+    e2eTools: [
+      { id: 'playwright', detect: /@playwright\/test|playwright/, standard: { name: 'Playwright Best Practices', url: 'https://playwright.dev/docs/best-practices' }, conventionFile: 'e2e.md' },
+    ],
     canFix: true,
   },
   {
@@ -149,6 +165,10 @@ export const LANGUAGES: Language[] = [
       integration: { name: 'Testcontainers for Go', url: 'https://golang.testcontainers.org/' },
       e2e: { name: 'Playwright Best Practices', url: 'https://playwright.dev/docs/best-practices' },
     },
+    // Playwright is the only realistic browser e2e tool wired today
+    e2eTools: [
+      { id: 'playwright', detect: /@playwright\/test|playwright/, standard: { name: 'Playwright Best Practices', url: 'https://playwright.dev/docs/best-practices' }, conventionFile: 'e2e.md' },
+    ],
     canFix: false, // flips to true once conventions/go/ exists
   },
   {
@@ -197,6 +217,9 @@ export const LANGUAGES: Language[] = [
       integration: { name: 'Testcontainers for Java', url: 'https://java.testcontainers.org/' },
       e2e: { name: 'Playwright Best Practices', url: 'https://playwright.dev/docs/best-practices' },
     },
+    e2eTools: [
+      { id: 'playwright', detect: /playwright/, standard: { name: 'Playwright Best Practices', url: 'https://playwright.dev/docs/best-practices' }, conventionFile: 'e2e.md' },
+    ],
     canFix: true,
   },
   {
@@ -230,6 +253,10 @@ export const LANGUAGES: Language[] = [
       integration: { name: 'the PHPUnit documentation', url: 'https://docs.phpunit.de/' },
       e2e: { name: 'Playwright Best Practices', url: 'https://playwright.dev/docs/best-practices' },
     },
+    // Playwright is the only realistic browser e2e tool wired today
+    e2eTools: [
+      { id: 'playwright', detect: /@playwright\/test|playwright/, standard: { name: 'Playwright Best Practices', url: 'https://playwright.dev/docs/best-practices' }, conventionFile: 'e2e.md' },
+    ],
     canFix: true,
   },
   {
@@ -260,6 +287,9 @@ export const LANGUAGES: Language[] = [
       integration: { name: 'Testcontainers for Python', url: 'https://testcontainers-python.readthedocs.io/' },
       e2e: { name: 'Playwright Best Practices', url: 'https://playwright.dev/docs/best-practices' },
     },
+    e2eTools: [
+      { id: 'playwright', detect: /pytest-playwright|playwright/, standard: { name: 'Playwright Best Practices', url: 'https://playwright.dev/docs/best-practices' }, conventionFile: 'e2e.md' },
+    ],
     canFix: true,
   },
   {
@@ -317,6 +347,20 @@ export const LANGUAGES: Language[] = [
       integration: { name: 'Testcontainers for Node.js', url: 'https://node.testcontainers.org/' },
       e2e: { name: 'Playwright Best Practices', url: 'https://playwright.dev/docs/best-practices' },
     },
+    e2eTools: [
+      {
+        id: 'cypress',
+        detect: /"cypress"\s*:/,
+        standard: { name: 'Cypress Best Practices', url: 'https://docs.cypress.io/app/core-concepts/best-practices' },
+        conventionFile: 'e2e.cypress.md',
+      },
+      {
+        id: 'playwright',
+        detect: /"@playwright\/test"\s*:/,
+        standard: { name: 'Playwright Best Practices', url: 'https://playwright.dev/docs/best-practices' },
+        conventionFile: 'e2e.md',
+      },
+    ],
     canFix: true,
   },
 ]

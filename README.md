@@ -130,8 +130,8 @@ Tudo detectado do manifest, mecanicamente, sem modelo:
 | | |
 |---|---|
 | ✅ Motor, CLI, MCP, gate de CI, `execute` com re-medição | verificado em repositórios reais |
-| ✅ Conventions | TS, Python, Java, Rust, PHP — cada regra rastreável à doc da lib |
-| 🚧 Conventions Go · worker pool do `fix` | |
+| ✅ Conventions | TS, Python, Java, Rust, PHP, Go — cada regra rastreável à doc da lib |
+| 🚧 Worker pool do `fix` | |
 
 ## Documentação
 

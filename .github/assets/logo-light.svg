@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="560" height="128" viewBox="0 0 560 128" role="img" aria-label="redbar">
+  <style>
+    text {
+      font-family: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+      font-weight: 700;
+      letter-spacing: -0.04em;
+    }
+  </style>
+  <text x="280" y="74" font-size="76" text-anchor="middle"><tspan fill="#17141a">red</tspan><tspan fill="#d92b2b">bar</tspan></text>
+  <g transform="translate(140, 100)">
+    <rect x="0" y="0" width="182" height="9" rx="4.5" fill="#2f9e44"/>
+    <rect x="190" y="0" width="90" height="9" rx="4.5" fill="#d92b2b"/>
+  </g>
+</svg>

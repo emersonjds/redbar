@@ -13,6 +13,7 @@ import type { Language } from './languages.js'
 import { serve, type ToolArgs, type ToolBox } from './mcp.js'
 import { reconcile } from './outcome.js'
 import { htmlToPdf } from './pdf.js'
+import { detectProfile } from './profile.js'
 import {
   renderHtml,
   renderJson,
@@ -21,7 +22,7 @@ import {
   renderOutcomeMarkdown,
   renderText,
 } from './report.js'
-import { selectRunner } from './runner.js'
+import { readManifest, selectE2eTool, selectRunner } from './runner.js'
 import { ranked, severity, type Severity } from './severity.js'
 import type { Gap, TestKind } from './types.js'
 
@@ -40,6 +41,8 @@ Usage:
 
   --all   scan the whole repository instead of the diff. The diff is the default: nobody takes a
           legacy repo to 80%, everybody can avoid making it worse. Use --all for the first look.
+
+  shortcuts:  i = inspect · b = briefing · x = execute · why = explain
 `
 
 const LAYERS: TestKind[] = ['unit', 'integration', 'e2e']
@@ -53,10 +56,12 @@ const LAYERS: TestKind[] = ['unit', 'integration', 'e2e']
  */
 function readConventions(root: string, language: Language): Conventions {
   const conventions: Conventions = {}
+  const e2eFile = selectE2eTool(root, language).conventionFile
 
   for (const layer of LAYERS) {
+    const fileName = layer === 'e2e' ? e2eFile : `${layer}.md`
     const shipped = fileURLToPath(
-      new URL(`../conventions/${language.id}/${layer}.md`, import.meta.url),
+      new URL(`../conventions/${language.id}/${fileName}`, import.meta.url),
     )
     const project = join(root, '.redbar', 'conventions', language.id, `${layer}.md`)
     const parts = [shipped, project].filter(existsSync).map((p) => readFileSync(p, 'utf8'))
@@ -68,10 +73,15 @@ function readConventions(root: string, language: Language): Conventions {
 }
 
 function briefingFor(root: string, inspection: Inspection): string {
+  const { language } = inspection
+  const profile = detectProfile(readManifest(root, language))
+  const e2eStandard = selectE2eTool(root, language).standard
   return renderBriefing(
     inspection,
-    readConventions(root, inspection.language),
+    readConventions(root, language),
     basename(resolve(root)),
+    profile,
+    e2eStandard,
   )
 }
 
@@ -134,16 +144,6 @@ export function gateResult(
   return { failed, counts }
 }
 
-// Duplicated from runner.ts's private readManifest: it is 5 lines and that file is off-limits
-// to edit for this task, so a private export is not an option here.
-function readManifest(root: string, language: Language): string {
-  return language.markers
-    .map((m) => join(root, m))
-    .filter((p) => existsSync(p))
-    .map((p) => readFileSync(p, 'utf8'))
-    .join('\n')
-}
-
 function runInspect(argv: string[]): void {
   const { positional, flags } = parseArgs(argv, new Set(['base', 'html', 'md', 'out', 'top']))
   const root = positional[0] ?? '.'
@@ -158,7 +158,14 @@ function runInspect(argv: string[]): void {
   }
 
   if (typeof flags.html === 'string') {
-    writeFileSync(flags.html, renderHtml(inspection, basename(resolve(root))))
+    writeFileSync(
+      flags.html,
+      renderHtml(
+        inspection,
+        basename(resolve(root)),
+        detectProfile(readManifest(root, inspection.language)),
+      ),
+    )
   }
 
   // no limits: `inspect` reports, it does not judge. A verdict here would imply a gate that
@@ -167,7 +174,10 @@ function runInspect(argv: string[]): void {
     writeFileSync(flags.md, renderMarkdown(inspection))
   }
 
-  const outDir = typeof flags.out === 'string' ? flags.out : '.redbar'
+  // resolved against the ANALYZED repo, never the cwd — `redbar inspect /outro/repo` rodado de
+  // qualquer lugar tem que deixar o gaps.json lá, não aqui. Achado num repo real: o gaps.json de
+  // um projeto caiu dentro da pasta do redbar.
+  const outDir = resolve(root, typeof flags.out === 'string' ? flags.out : '.redbar')
   mkdirSync(outDir, { recursive: true })
   writeFileSync(join(outDir, 'gaps.json'), renderJson(inspection))
 }
@@ -197,7 +207,8 @@ function runBriefing(argv: string[]): void {
 
   const mdPath = typeof flags.out === 'string' ? flags.out : join(dir, 'TESTING.md')
   const htmlPath = join(dir, 'REDBAR.html')
-  const html = renderHtml(inspection, repo)
+  const profile = detectProfile(readManifest(root, inspection.language))
+  const html = renderHtml(inspection, repo, profile)
 
   writeFileSync(mdPath, doc)
   writeFileSync(htmlPath, html)
@@ -469,8 +480,32 @@ function runMcp(argv: string[]): void {
   }
 
   const tools: ToolBox = {
-    redbar_inspect: (args) => renderText(inspectFor(args)),
-    redbar_briefing: (args) => briefingFor(rootOf(args), inspectFor(args)),
+    // as tools também PERSISTEM no projeto analisado. Quem instalou o MCP no projeto espera os
+    // artefatos no projeto — um texto que só existe no chat do agente morre com a conversa.
+    redbar_inspect: (args) => {
+      const root = rootOf(args)
+      const inspection = inspectFor(args)
+      mkdirSync(join(root, '.redbar'), { recursive: true })
+      writeFileSync(join(root, '.redbar', 'gaps.json'), renderJson(inspection))
+      return renderText(inspection)
+    },
+    redbar_briefing: (args) => {
+      const root = rootOf(args)
+      const doc = briefingFor(root, inspectFor(args))
+      mkdirSync(join(root, '.redbar'), { recursive: true })
+      writeFileSync(join(root, '.redbar', 'TESTING.md'), doc)
+
+      // o ARQUIVO leva tudo; o fio, não. Um repo real devolveu 520k chars — briefing de 969 gaps
+      // com as conventions inteiras — o que afoga o contexto de qualquer agente. Corte explícito,
+      // nunca silencioso: a nota diz o que ficou de fora e onde está o inteiro.
+      const MAX = 60_000
+      if (doc.length <= MAX) return doc
+      return (
+        doc.slice(0, MAX) +
+        `\n\n---\n\n[cortado pelo MCP: ${doc.length - MAX} caracteres omitidos. ` +
+        `O documento completo está em .redbar/TESTING.md — leia de lá.]`
+      )
+    },
     redbar_explain: (args) => {
       const inspection = inspectFor(args)
       const query = typeof args.symbol === 'string' ? args.symbol : ''
@@ -543,9 +578,17 @@ function runCi(argv: string[]): number {
   return failed ? 1 : 0
 }
 
+// npm tem `npm i`, cargo tem `cargo b`: comando de todo dia merece uma letra. `why` no lugar de
+// uma letra pro explain porque `redbar why buscarPorTermos` se lê sozinho.
+const ALIASES: Record<string, string> = { i: 'inspect', b: 'briefing', x: 'execute', why: 'explain' }
+
+export function canonical(command: string): string {
+  return ALIASES[command] ?? command
+}
+
 function main(): void {
   const argv = process.argv.slice(2)
-  const command = argv[0]
+  const command = argv[0] && canonical(argv[0])
 
   if (!command || command === '--help' || command === '-h') {
     console.log(HELP)

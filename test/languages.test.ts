@@ -28,6 +28,23 @@ describe('language registry', () => {
     }
   })
 
+  // Found on a real Next.js repo: public/ holds SERVED assets, and MSW drops its generated
+  // mockServiceWorker.js there. It ranked as the repo's #3 gap — 153 lines of vendor code nobody
+  // should ever test. public/ is never product code.
+  describe('the ts testFilePattern keeps non-product files out of the gap list', () => {
+    const ts = byId('ts')!
+
+    it('excludes anything under public/', () => {
+      expect(ts.testFilePattern.test('public/mockServiceWorker.js')).toBe(true)
+      expect(ts.testFilePattern.test('apps/web/public/sw.js')).toBe(true)
+    })
+
+    it('still treats real source as product code', () => {
+      expect(ts.testFilePattern.test('src/features/busca/aplicar-busca.ts')).toBe(false)
+      expect(ts.testFilePattern.test('src/republic/office.ts')).toBe(false) // "public" inside a name
+    })
+  })
+
   // unit libs belong to the runner, never to the language — a jest project told to install
   // vitest would follow the advice and break its own setup
   it('no language claims a unit-test lib — that is the runner job', () => {

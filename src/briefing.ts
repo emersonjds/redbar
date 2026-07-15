@@ -1,6 +1,8 @@
 // Pure: string in/out, no disk access. cli.ts reads the convention files and passes them in.
 import type { Inspection } from './engine.js'
 import { scoreArithmetic } from './explain.js'
+import type { Standard } from './languages.js'
+import { kindPriority, profileLabel, type Profile } from './profile.js'
 import { ranked, severity } from './severity.js'
 import type { Gap, TestKind } from './types.js'
 
@@ -20,9 +22,13 @@ export function renderBriefing(
   inspection: Inspection,
   conventions: Conventions,
   repoName: string,
+  profile: Profile,
+  e2eStandard: Standard,
 ): string {
   const { language, runner, base, gaps, stale } = inspection
   const out: string[] = []
+  const standardFor = (kind: TestKind): Standard =>
+    kind === 'e2e' ? e2eStandard : language.standards[kind]
 
   out.push(
     `# Testing brief — ${repoName}`,
@@ -91,12 +97,42 @@ export function renderBriefing(
       'of what a good test looks like — that memory is a house style, and importing it is the ' +
       'problem this document was built to solve.',
     '',
-    '## The work',
-    '',
   )
 
+  // The lens. Same gaps, same score order within each group — only regrouped by where THIS kind of
+  // project concentrates its risk. It reorders a view; it never touched a score. 'library' means no
+  // signal, so there is nothing honest to group by and the section is omitted.
+  if (profile !== 'library') {
+    out.push(
+      '## Focus for this project',
+      '',
+      `Detected: **${profileLabel(profile)}**. The score below is unchanged — it is still pure ` +
+        `counting. But for ${profileLabel(profile)}, the gaps that bite first are grouped here, ` +
+        `each group in score order.`,
+      '',
+    )
+
+    const blurb: Record<TestKind, string> = {
+      e2e: 'e2e — where it breaks in front of a user',
+      integration: 'integration — the seams to your data and APIs',
+      unit: 'unit — real, and they still matter',
+    }
+
+    for (const kind of kindPriority(profile)) {
+      const inKind = work.filter((g) => g.kind === kind)
+      if (inKind.length === 0) continue
+      out.push(`### ${blurb[kind]}`, '')
+      for (const g of inKind) {
+        out.push(`- \`${g.symbol ?? '(no symbol)'}\` — \`${g.file}:${g.lines[0]}\` · ${severity(g)}`)
+      }
+      out.push('')
+    }
+  }
+
+  out.push('## The work', '')
+
   work.forEach((gap, i) => {
-    const std = language.standards[gap.kind]
+    const std = standardFor(gap.kind)
     out.push(
       `### ${i + 1}. \`${gap.symbol ?? '(no symbol)'}\` — ${severity(gap)}`,
       '',
@@ -113,7 +149,7 @@ export function renderBriefing(
   out.push('## The standards', '')
 
   for (const layer of layers) {
-    const std = language.standards[layer]
+    const std = standardFor(layer)
     const text = conventions[layer]
 
     out.push(`### ${layer} — ${std.name}`, '')

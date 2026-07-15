@@ -1,5 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import { dirtyTreeError, gateResult } from '../src/cli.js'
+import { canonical, dirtyTreeError, gateResult } from '../src/cli.js'
+
+describe('canonical', () => {
+  it('expande os atalhos de uma letra, estilo cargo/npm', () => {
+    expect(canonical('i')).toBe('inspect')
+    expect(canonical('b')).toBe('briefing')
+    expect(canonical('x')).toBe('execute')
+    expect(canonical('why')).toBe('explain')
+  })
+
+  it('deixa o nome completo e o desconhecido passarem intactos', () => {
+    expect(canonical('inspect')).toBe('inspect')
+    expect(canonical('nope')).toBe('nope')
+  })
+})
 import type { Gap } from '../src/types.js'
 
 const gap = (overrides: Partial<Pick<Gap, 'fullyUncovered' | 'branches'>>): Gap => ({

@@ -2,11 +2,11 @@
 
 # redbar
 
-### O agente escreve os testes. O redbar decide quais — e confere.
+### O agente escreve os testes. O redbar decide quais, e confere.
 
-**Achar o que falta testar é conta: coverage report × `git diff`, zero IA.
-Escrever o teste é o agente, seguindo a doc oficial da lib.
-Conferir se fechou é conta de novo.**
+**A cobertura e o `git diff` dizem o que falta testar, sem IA no meio.
+Seu agente escreve os testes, seguindo a doc oficial de cada lib.
+O redbar mede de novo e diz o que fechou de verdade.**
 
 [![release](https://img.shields.io/github/v/release/emersonjds/redbar?label=release&color=0A7EA4&sort=semver)](https://github.com/emersonjds/redbar/releases/latest)
 [![ci](https://github.com/emersonjds/redbar/actions/workflows/ci.yml/badge.svg)](https://github.com/emersonjds/redbar/actions/workflows/ci.yml)
@@ -90,7 +90,7 @@ Cada linha: o símbolo, a camada de teste que falta (unit / integration / e2e) e
 
 > **[Veja o fluxo completo desenhado →](https://claude.ai/code/artifact/fac215b0-64a0-42c4-814f-eef64864049b)**
 
-A divisão é o projeto inteiro: achar o buraco é compilador e git; escrever é o agente; conferir é compilador de novo. Um teste sem asserção sobe cobertura e não prova nada — o redbar **apaga** e marca `no-assertion`. Um agente que "conserta" teu código pra fazer o teste passar — o redbar **reverte** e marca `touched-source`.
+Essa divisão é o projeto inteiro: quem acha o buraco é o compilador e o git. Quem escreve é o agente. Quem confere é o compilador de novo. Teste sem asserção sobe a cobertura e não prova nada: o redbar **apaga** e marca `no-assertion`. Agente que "conserta" teu código pra fazer o teste passar: o redbar **reverte** e marca `touched-source`.
 
 ## Como usar
 

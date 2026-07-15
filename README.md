@@ -1,18 +1,27 @@
 <div align="center">
 
-# redbar
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/assets/logo-dark.svg">
+  <img alt="redbar" src=".github/assets/logo-light.svg" width="480">
+</picture>
+
+<br>
 
 ### O agente escreve os testes. O redbar decide quais, e confere.
 
-**A cobertura e o `git diff` dizem o que falta testar, sem IA no meio.
-Seu agente escreve os testes, seguindo a doc oficial de cada lib.
-O redbar mede de novo e diz o que fechou de verdade.**
+A cobertura e o `git diff` dizem o que falta testar, sem IA no meio.
+Seu agente escreve, seguindo a doc oficial de cada lib.
+O redbar mede de novo e diz o que fechou de verdade.
+
+<br>
 
 [![release](https://img.shields.io/github/v/release/emersonjds/redbar?label=release&color=0A7EA4&sort=semver)](https://github.com/emersonjds/redbar/releases/latest)
 [![ci](https://github.com/emersonjds/redbar/actions/workflows/ci.yml/badge.svg)](https://github.com/emersonjds/redbar/actions/workflows/ci.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![runtime dependencies: 0](https://img.shields.io/badge/runtime%20deps-0-success)](package.json)
 [![zero LLM na análise](https://img.shields.io/badge/an%C3%A1lise-zero%20LLM-critical)](docs/design.md)
+
+**[Como usar](#como-usar)** · **[MCP](#mcp-conecte-no-agente-que-você-já-usa)** · **[O fluxo, desenhado](https://claude.ai/code/artifact/fac215b0-64a0-42c4-814f-eef64864049b)** · **[Design](docs/design.md)**
 
 **Português** · [English](README.en.md)
 

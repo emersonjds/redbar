@@ -1,18 +1,27 @@
 <div align="center">
 
-# redbar
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/assets/logo-dark.svg">
+  <img alt="redbar" src=".github/assets/logo-light.svg" width="480">
+</picture>
 
-### The agent writes the tests. redbar decides which — and checks.
+<br>
 
-**Finding what's untested is arithmetic: coverage report × `git diff`, zero AI.
-Writing the test is the agent, following the library's own docs.
-Checking whether it closed is arithmetic again.**
+### The agent writes the tests. redbar decides which, and checks.
+
+Coverage and `git diff` say what's left untested, with no AI in the middle.
+Your agent writes the tests, following each library's official docs.
+redbar measures again and says what actually closed.
+
+<br>
 
 [![release](https://img.shields.io/github/v/release/emersonjds/redbar?label=release&color=0A7EA4&sort=semver)](https://github.com/emersonjds/redbar/releases/latest)
 [![ci](https://github.com/emersonjds/redbar/actions/workflows/ci.yml/badge.svg)](https://github.com/emersonjds/redbar/actions/workflows/ci.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![runtime dependencies: 0](https://img.shields.io/badge/runtime%20deps-0-success)](package.json)
 [![zero LLM in analysis](https://img.shields.io/badge/analysis-zero%20LLM-critical)](docs/design.md)
+
+**[How to use](#how-to-use)** · **[MCP](#mcp-plug-into-the-agent-you-already-use)** · **[The flow, drawn](https://claude.ai/code/artifact/fac215b0-64a0-42c4-814f-eef64864049b)** · **[Design](docs/design.md)**
 
 [Português](README.md) · **English**
 

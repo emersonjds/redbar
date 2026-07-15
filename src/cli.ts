@@ -172,7 +172,10 @@ function runInspect(argv: string[]): void {
     writeFileSync(flags.md, renderMarkdown(inspection))
   }
 
-  const outDir = typeof flags.out === 'string' ? flags.out : '.redbar'
+  // resolved against the ANALYZED repo, never the cwd — `redbar inspect /outro/repo` rodado de
+  // qualquer lugar tem que deixar o gaps.json lá, não aqui. Achado num repo real: o gaps.json de
+  // um projeto caiu dentro da pasta do redbar.
+  const outDir = resolve(root, typeof flags.out === 'string' ? flags.out : '.redbar')
   mkdirSync(outDir, { recursive: true })
   writeFileSync(join(outDir, 'gaps.json'), renderJson(inspection))
 }
@@ -475,8 +478,32 @@ function runMcp(argv: string[]): void {
   }
 
   const tools: ToolBox = {
-    redbar_inspect: (args) => renderText(inspectFor(args)),
-    redbar_briefing: (args) => briefingFor(rootOf(args), inspectFor(args)),
+    // as tools também PERSISTEM no projeto analisado. Quem instalou o MCP no projeto espera os
+    // artefatos no projeto — um texto que só existe no chat do agente morre com a conversa.
+    redbar_inspect: (args) => {
+      const root = rootOf(args)
+      const inspection = inspectFor(args)
+      mkdirSync(join(root, '.redbar'), { recursive: true })
+      writeFileSync(join(root, '.redbar', 'gaps.json'), renderJson(inspection))
+      return renderText(inspection)
+    },
+    redbar_briefing: (args) => {
+      const root = rootOf(args)
+      const doc = briefingFor(root, inspectFor(args))
+      mkdirSync(join(root, '.redbar'), { recursive: true })
+      writeFileSync(join(root, '.redbar', 'TESTING.md'), doc)
+
+      // o ARQUIVO leva tudo; o fio, não. Um repo real devolveu 520k chars — briefing de 969 gaps
+      // com as conventions inteiras — o que afoga o contexto de qualquer agente. Corte explícito,
+      // nunca silencioso: a nota diz o que ficou de fora e onde está o inteiro.
+      const MAX = 60_000
+      if (doc.length <= MAX) return doc
+      return (
+        doc.slice(0, MAX) +
+        `\n\n---\n\n[cortado pelo MCP: ${doc.length - MAX} caracteres omitidos. ` +
+        `O documento completo está em .redbar/TESTING.md — leia de lá.]`
+      )
+    },
     redbar_explain: (args) => {
       const inspection = inspectFor(args)
       const query = typeof args.symbol === 'string' ? args.symbol : ''

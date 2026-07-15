@@ -58,7 +58,8 @@ export const TOOLS = [
       'THE MAIN TOOL. Returns a complete testing brief in markdown: every untested symbol this ' +
       'branch changed, ranked, each with its layer (unit/integration/e2e) and the canonical ' +
       'standard to follow for that layer. Use it as the source of truth for writing the tests, ' +
-      'and follow it top to bottom — the order is computed, not chosen. Save it to TESTING.md.',
+      'and follow it top to bottom — the order is computed, not chosen. redbar also writes it to ' +
+      "the project's .redbar/TESTING.md, so you do not need to save it.",
     inputSchema: { type: 'object', properties: { ...PATH_ARG } },
   },
   {

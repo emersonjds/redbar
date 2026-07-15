@@ -169,7 +169,7 @@ export const LANGUAGES: Language[] = [
     e2eTools: [
       { id: 'playwright', detect: /@playwright\/test|playwright/, standard: { name: 'Playwright Best Practices', url: 'https://playwright.dev/docs/best-practices' }, conventionFile: 'e2e.md' },
     ],
-    canFix: false, // flips to true once conventions/go/ exists
+    canFix: true,
   },
   {
     id: 'java',

@@ -130,8 +130,8 @@ All detected from the manifest, mechanically, no model:
 | | |
 |---|---|
 | ✅ Engine, CLI, MCP, CI gate, `execute` with re-measurement | verified on real repositories |
-| ✅ Conventions | TS, Python, Java, Rust, PHP — every rule traceable to the library's docs |
-| 🚧 Go conventions · `fix` worker pool | |
+| ✅ Conventions | TS, Python, Java, Rust, PHP, Go — every rule traceable to the library's docs |
+| 🚧 `fix` worker pool | |
 
 ## Documentation
 

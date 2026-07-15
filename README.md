@@ -164,7 +164,7 @@ Tudo detectado do manifest, mecanicamente, sem modelo:
 
 ## Origem
 
-O redbar nasceu de uma conversa sobre open source e testes: já existem quinhentos padrões de teste no mundo, e mesmo assim o que a IA escreve não segue nenhum — e ninguém confere o que ela alega. Essa lacuna, no meio do pagode, é o projeto inteiro. O empurrão inicial veio do trabalho open source do Well Poku (lagune.ai). OSS é isso.
+Baseado no [lagune.ai](https://github.com/wellwelwel/lagune), do [Well Poku](https://github.com/wellwelwel).
 
 O propósito cabe numa frase: **a IA nunca dá nota na própria prova.**
 

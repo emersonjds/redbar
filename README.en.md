@@ -164,7 +164,7 @@ All detected from the manifest, mechanically, no model:
 
 ## Origin
 
-redbar was born in a conversation about open source and testing: the world already has five hundred test standards, and still what the AI writes follows none of them — and nobody checks what it claims. That gap is the whole project. The initial push came from Well Poku's open source work (lagune.ai). That's what OSS is for.
+Based on [lagune.ai](https://github.com/wellwelwel/lagune), by [Well Poku](https://github.com/wellwelwel).
 
 The purpose fits in one sentence: **the AI never grades its own exam.**
 

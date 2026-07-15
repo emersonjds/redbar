@@ -12,7 +12,7 @@ Conferir se fechou é conta de novo.**
 [![ci](https://github.com/emersonjds/redbar/actions/workflows/ci.yml/badge.svg)](https://github.com/emersonjds/redbar/actions/workflows/ci.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![runtime dependencies: 0](https://img.shields.io/badge/runtime%20deps-0-success)](package.json)
-[![zero LLM na análise](https://img.shields.io/badge/an%C3%A1lise-zero%20LLM-critical)](docs/design.md#the-analysis-is-zero-llm-and-that-is-the-whole-point)
+[![zero LLM na análise](https://img.shields.io/badge/an%C3%A1lise-zero%20LLM-critical)](docs/design.md)
 
 **Português** · [English](README.en.md)
 
@@ -20,14 +20,36 @@ Conferir se fechou é conta de novo.**
 
 ---
 
-## O problema
+## O problema que ele resolve
 
-Todo repositório tem teste faltando, e ninguém sabe **onde**. A cobertura diz "43%" — não diz se *o que você mudou ontem* está testado. E quando uma IA escreve o teste, sai no estilo que o modelo acordou querendo: seis prompts, seis estilos.
+- Todo repositório tem teste faltando, e ninguém sabe **onde**. Cobertura de "43%" não diz se *o que você mudou ontem* está testado.
+- Quando uma IA escreve o teste, sai no estilo que o modelo acordou querendo. Seis prompts, seis estilos.
+- E quando a IA diz "pronto, testei", ninguém confere.
 
-São dois problemas diferentes, e o redbar não usa IA em nenhum lugar onde ela atrapalha:
+O redbar resolve os três: **mede** onde estão os buracos (sem IA), entrega o **padrão oficial** de cada lib pro agente escrever, e **mede de novo** pra conferir o que fechou.
 
-1. **Onde estão os buracos?** É problema de *dado*. A resposta já existe no coverage report e no git — nenhum modelo precisa opinar.
-2. **Em que estilo escrever o teste?** É problema de *convenção*. A resposta já existe na doc oficial de cada lib — ninguém discute com a doc do Playwright num code review.
+## Por que não é só uma skill do agente?
+
+- Uma skill pede pro modelo **adivinhar** o que está coberto. Cobertura é fato de execução: não está visível no código-fonte. O modelo chuta, com confiança.
+- Pergunte duas vezes, receba duas listas. O redbar dá a mesma resposta byte a byte — e só um número que repete pode segurar um gate de CI.
+- Skill é opt-in: roda quando alguém lembra. O gate roda em todo PR, inclusive pra quem não usa IA.
+
+## E TDD, SDD?
+
+- TDD e SDD valem pra código que **ainda vai nascer**, e pedem disciplina de todo mundo, todo dia.
+- O redbar age **depois**, no repositório que já existe. Não pede adesão de ninguém: mede o que ficou sem teste.
+- Não competem. TDD previne, redbar mede. O time que faz TDD perfeito não precisa do redbar — esse time não existe.
+
+## O que já existe, e onde cada um para
+
+| Ferramenta | O que faz | Onde para |
+|---|---|---|
+| Codecov / Coveralls | mostra a porcentagem | não diz **o que** testar. Termômetro, não plano |
+| Copilot / Cursor "generate tests" | escreve teste do arquivo aberto | não sabe o que já está coberto — cobertura não está visível no código-fonte |
+| Qodo e afins | IA escreve testes até a cobertura subir | a IA decide o que cobrir, e ninguém confere o que ela alega |
+| Diffblue | gera testes sem IA | só Java, caixa preta, não conversa com o teu agente |
+
+O espaço do redbar é a combinação que nenhuma faz: **medir sem IA, escrever com o agente que você já usa, e conferir medindo de novo.**
 
 ## O que ele responde
 
@@ -70,10 +92,18 @@ Cada linha: o símbolo, a camada de teste que falta (unit / integration / e2e) e
 
 A divisão é o projeto inteiro: achar o buraco é compilador e git; escrever é o agente; conferir é compilador de novo. Um teste sem asserção sobe cobertura e não prova nada — o redbar **apaga** e marca `no-assertion`. Um agente que "conserta" teu código pra fazer o teste passar — o redbar **reverte** e marca `touched-source`.
 
-## Começando
+## Como usar
+
+Instala uma vez, roda no teu repo, e ele faz o resto: descobre a linguagem, o runner, roda a cobertura se faltar, e te diz o que testar.
 
 ```bash
-redbar i         # inspect — o que eu mudei que nada testa? (gera o coverage se faltar)
+# instalar (ainda fora do npm — direto do clone):
+git clone https://github.com/emersonjds/redbar.git && cd redbar && npm install && npm link
+```
+
+```bash
+cd /teu/repo
+redbar i         # inspect — o que eu mudei que nada testa?
 redbar b         # briefing — o documento pro agente + HTML + PDF pra gerência
 redbar x         # execute — o agente escreve, o redbar julga e re-mede
 redbar why X     # explain — de onde veio o número de X, conta por conta
@@ -81,21 +111,18 @@ redbar why X     # explain — de onde veio o número de X, conta por conta
 
 Cada atalho tem o nome completo (`inspect`, `briefing`, `execute`, `explain`), e `--all` em qualquer um olha o repo inteiro em vez do diff.
 
-Ainda não publicado no npm — rode a partir do clone:
-
-```bash
-git clone https://github.com/emersonjds/redbar.git && cd redbar && npm install && npm link
-```
-
 ## MCP: conecte no agente que você já usa
 
-O servidor MCP expõe o motor pra qualquer cliente (Claude Code, Cursor, Codex...):
+Instalou o MCP no projeto, o agente para de chutar o que testar: pergunta ao redbar e recebe medição. Um comando por cliente:
 
 ```bash
-claude mcp add redbar -- redbar mcp
+claude mcp add redbar -- redbar mcp     # Claude Code
+codex mcp add redbar -- redbar mcp      # Codex
+gemini mcp add redbar redbar mcp        # Gemini CLI
+copilot mcp add redbar -- redbar mcp    # Copilot CLI
 ```
 
-ou no `.mcp.json` do projeto:
+Cursor, VS Code e qualquer outro cliente MCP: o JSON é sempre o mesmo (`.cursor/mcp.json`, `.mcp.json`; no VS Code a chave é `servers` em `.vscode/mcp.json`):
 
 ```json
 { "mcpServers": { "redbar": { "command": "redbar", "args": ["mcp"] } } }
@@ -107,7 +134,7 @@ ou no `.mcp.json` do projeto:
 | `redbar_inspect` | a lista de gaps, medida |
 | `redbar_explain` | a auditoria de um número — a resposta pra "isso é alucinação?" |
 
-Com o MCP, o agente para de **chutar** o que testar: pergunta ao motor e recebe medição. O `execute` é só CLI, de propósito — quem chama o MCP já *é* um modelo; ele não spawna outro.
+Os artefatos (`TESTING.md`, `gaps.json`) ficam gravados no **teu projeto**, em `.redbar/`. O `execute` é só CLI, de propósito: quem chama o MCP já *é* um modelo; ele não spawna outro.
 
 ## O motor lê a cara do projeto
 
@@ -123,7 +150,9 @@ Tudo detectado do manifest, mecanicamente, sem modelo:
 
 ## Linguagens
 
-**JavaScript/TypeScript · Java · Python · Rust · PHP · Go** — adicionar uma linguagem é **uma linha de dado** em `src/languages.ts`. Três parsers (lcov, Cobertura, JaCoCo) cobrem os ecossistemas todos.
+- **JavaScript/TypeScript · Java · Python · Rust · PHP · Go**
+- três parsers de cobertura (lcov, Cobertura, JaCoCo) cobrem todos os ecossistemas
+- adicionar uma linguagem é **uma linha de dado** em `src/languages.ts` — sem código novo
 
 ## Status
 
@@ -132,6 +161,12 @@ Tudo detectado do manifest, mecanicamente, sem modelo:
 | ✅ Motor, CLI, MCP, gate de CI, `execute` com re-medição | verificado em repositórios reais |
 | ✅ Conventions | TS, Python, Java, Rust, PHP, Go — cada regra rastreável à doc da lib |
 | 🚧 Worker pool do `fix` | |
+
+## Origem
+
+O redbar nasceu de uma conversa sobre open source e testes: já existem quinhentos padrões de teste no mundo, e mesmo assim o que a IA escreve não segue nenhum — e ninguém confere o que ela alega. Essa lacuna, no meio do pagode, é o projeto inteiro. O empurrão inicial veio do trabalho open source do Well Poku (lagune.ai). OSS é isso.
+
+O propósito cabe numa frase: **a IA nunca dá nota na própria prova.**
 
 ## Documentação
 

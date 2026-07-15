@@ -12,7 +12,7 @@ Checking whether it closed is arithmetic again.**
 [![ci](https://github.com/emersonjds/redbar/actions/workflows/ci.yml/badge.svg)](https://github.com/emersonjds/redbar/actions/workflows/ci.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![runtime dependencies: 0](https://img.shields.io/badge/runtime%20deps-0-success)](package.json)
-[![zero LLM in analysis](https://img.shields.io/badge/analysis-zero%20LLM-critical)](docs/design.md#the-analysis-is-zero-llm-and-that-is-the-whole-point)
+[![zero LLM in analysis](https://img.shields.io/badge/analysis-zero%20LLM-critical)](docs/design.md)
 
 [Português](README.md) · **English**
 
@@ -20,14 +20,36 @@ Checking whether it closed is arithmetic again.**
 
 ---
 
-## The problem
+## The problem it solves
 
-Every repository is missing tests, and nobody knows **where**. Coverage says "43%" — it doesn't say whether *the thing you changed yesterday* is tested. And when an AI writes the test, it comes out in whatever style the model woke up with: six prompts, six styles.
+- Every repository is missing tests, and nobody knows **where**. "43% coverage" doesn't say whether *the thing you changed yesterday* is tested.
+- When an AI writes the test, it comes out in whatever style the model woke up with. Six prompts, six styles.
+- And when the AI says "done, tested", nobody checks.
 
-Two different problems, and redbar uses AI in neither place where it hurts:
+redbar solves all three: it **measures** where the holes are (no AI), hands the agent each library's **official standard** to write by, and **measures again** to check what actually closed.
 
-1. **Where are the holes?** A *data* problem. The answer already exists in the coverage report and in git — no model gets a vote.
-2. **In what style should the test be written?** A *convention* problem. The answer already exists in each library's official docs — nobody argues with the Playwright docs in a code review.
+## Why isn't this just an agent skill?
+
+- A skill asks the model to **guess** what's covered. Coverage is a runtime fact: it is not visible in the source. The model guesses, confidently.
+- Ask twice, get two lists. redbar gives the same answer byte for byte — and only a number that repeats can hold a CI gate.
+- A skill is opt-in: it runs when someone remembers. The gate runs on every PR, including for people who don't use AI.
+
+## What about TDD, SDD?
+
+- TDD and SDD apply to code that **doesn't exist yet**, and demand discipline from everyone, every day.
+- redbar acts **after**, on the repository that already exists. It asks nothing of anyone: it measures what was left untested.
+- They don't compete. TDD prevents, redbar measures. A team doing perfect TDD doesn't need redbar — that team doesn't exist.
+
+## What already exists, and where each one stops
+
+| Tool | What it does | Where it stops |
+|---|---|---|
+| Codecov / Coveralls | shows the percentage | doesn't say **what** to test. A thermometer, not a plan |
+| Copilot / Cursor "generate tests" | writes a test for the open file | doesn't know what's already covered — coverage is not visible in the source |
+| Qodo and friends | AI writes tests until coverage rises | the AI decides what to cover, and nobody checks what it claims |
+| Diffblue | generates tests without AI | Java only, a black box, doesn't talk to your agent |
+
+redbar's space is the combination none of them ship: **measure without AI, write with the agent you already use, and check by measuring again.**
 
 ## The question it answers
 
@@ -70,10 +92,18 @@ Each row: the symbol, the missing test's layer (unit / integration / e2e) and it
 
 The split is the whole project: finding the hole is the compiler and git; writing is the agent; checking is the compiler again. A test that asserts nothing raises coverage and proves nothing — redbar **deletes it** and marks `no-assertion`. An agent that "fixes" your code to make its test pass — redbar **reverts it** and marks `touched-source`.
 
-## Getting started
+## How to use
+
+Install once, run it in your repo, and it does the rest: detects the language and the runner, generates coverage if it's missing, and tells you what to test.
 
 ```bash
-redbar i         # inspect — what did I change that nothing tests? (generates coverage if missing)
+# install (not on npm yet — straight from the clone):
+git clone https://github.com/emersonjds/redbar.git && cd redbar && npm install && npm link
+```
+
+```bash
+cd /your/repo
+redbar i         # inspect — what did I change that nothing tests?
 redbar b         # briefing — the document for your agent + HTML + PDF for management
 redbar x         # execute — the agent writes, redbar judges and re-measures
 redbar why X     # explain — where X's number came from, step by step
@@ -81,21 +111,18 @@ redbar why X     # explain — where X's number came from, step by step
 
 Every shortcut has a full name (`inspect`, `briefing`, `execute`, `explain`), and `--all` on any of them scans the whole repo instead of the diff.
 
-Not on npm yet — run from the clone:
-
-```bash
-git clone https://github.com/emersonjds/redbar.git && cd redbar && npm install && npm link
-```
-
 ## MCP: plug into the agent you already use
 
-The MCP server exposes the engine to any client (Claude Code, Cursor, Codex...):
+With the MCP installed, the agent stops guessing what to test: it asks redbar and gets a measurement. One command per client:
 
 ```bash
-claude mcp add redbar -- redbar mcp
+claude mcp add redbar -- redbar mcp     # Claude Code
+codex mcp add redbar -- redbar mcp      # Codex
+gemini mcp add redbar redbar mcp        # Gemini CLI
+copilot mcp add redbar -- redbar mcp    # Copilot CLI
 ```
 
-or in the project's `.mcp.json`:
+Cursor, VS Code and any other MCP client: the JSON is always the same (`.cursor/mcp.json`, `.mcp.json`; VS Code uses a `servers` key in `.vscode/mcp.json`):
 
 ```json
 { "mcpServers": { "redbar": { "command": "redbar", "args": ["mcp"] } } }
@@ -107,7 +134,7 @@ or in the project's `.mcp.json`:
 | `redbar_inspect` | the gap list, measured |
 | `redbar_explain` | the audit of one number — the answer to "is this a hallucination?" |
 
-With MCP, the agent stops **guessing** what to test: it asks the engine and gets a measurement. `execute` is CLI-only on purpose — whoever calls the MCP already *is* a model; it doesn't spawn another one.
+The artifacts (`TESTING.md`, `gaps.json`) are written into **your project**, under `.redbar/`. `execute` is CLI-only on purpose: whoever calls the MCP already *is* a model; it doesn't spawn another one.
 
 ## The engine reads the project's shape
 
@@ -123,7 +150,9 @@ All detected from the manifest, mechanically, no model:
 
 ## Languages
 
-**JavaScript/TypeScript · Java · Python · Rust · PHP · Go** — adding a language is **one line of data** in `src/languages.ts`. Three parsers (lcov, Cobertura, JaCoCo) cover all the ecosystems.
+- **JavaScript/TypeScript · Java · Python · Rust · PHP · Go**
+- three coverage parsers (lcov, Cobertura, JaCoCo) cover every ecosystem
+- adding a language is **one line of data** in `src/languages.ts` — no new code
 
 ## Status
 
@@ -132,6 +161,12 @@ All detected from the manifest, mechanically, no model:
 | ✅ Engine, CLI, MCP, CI gate, `execute` with re-measurement | verified on real repositories |
 | ✅ Conventions | TS, Python, Java, Rust, PHP, Go — every rule traceable to the library's docs |
 | 🚧 `fix` worker pool | |
+
+## Origin
+
+redbar was born in a conversation about open source and testing: the world already has five hundred test standards, and still what the AI writes follows none of them — and nobody checks what it claims. That gap is the whole project. The initial push came from Well Poku's open source work (lagune.ai). That's what OSS is for.
+
+The purpose fits in one sentence: **the AI never grades its own exam.**
 
 ## Documentation
 

@@ -1,29 +1,29 @@
-# redbar — design, decisão por decisão
+# redbar — o design, decisão por decisão
 
 > O mergulho fundo. O [README](../README.md) é o resumo; este documento guarda cada decisão
 > de design e o porquê dela, na íntegra.
 
 ---
 
-## The problem
+## O problema
 
-Nobody argues that tests matter. Teams still ship without them, and it is almost never laziness. It is two different problems that get treated as one:
+Ninguém discute que teste importa. Times ainda lançam sem teste, e quase nunca é preguiça. São dois problemas diferentes tratados como um só:
 
-**1. Nobody knows where the holes are.** Coverage sits at 43%, and that number tells you nothing about whether *the thing you shipped last Tuesday* is tested. That is a **data problem** — not an AI problem.
+**1. Ninguém sabe onde estão os buracos.** A cobertura marca 43%, e esse número não diz nada sobre se *o que você lançou na terça passada* tem teste. Isso é um **problema de dado**, não de IA.
 
-**2. When someone does write a test, it comes out in a style nobody agreed on.** Six developers, six styles. Hand it to an AI agent and you get a seventh — whatever the model felt like that morning. That is a **convention problem** — not a tooling problem.
+**2. Quando alguém escreve um teste, ele sai num estilo que ninguém combinou.** Seis devs, seis estilos. Passa pra um agente de IA e você ganha um sétimo: o que o modelo sentiu vontade de fazer naquela manhã. Isso é um **problema de convenção**, não de ferramenta.
 
-Conflating the two is the classic mistake. redbar attacks both, with different mechanisms: the first with the compiler and git, the second with a spec the agent is forced to read — **the library's own documented standard**, so the tie-breaker is not one more opinion.
+Misturar os dois é o erro clássico. O redbar ataca os dois, com mecanismos diferentes: o primeiro com o compilador e o git, o segundo com uma spec que o agente é obrigado a ler. **O padrão documentado da própria biblioteca**, pra que o critério de desempate não seja mais uma opinião.
 
-## What it does
+## O que ele faz
 
-Coverage tools tell you what percentage of your codebase is covered. Useless on a Tuesday afternoon.
+Ferramenta de cobertura te diz que porcentagem do código está coberta. Inútil numa tarde de terça-feira.
 
-redbar answers the only question that matters in a pull request:
+O redbar responde a única pergunta que importa num pull request:
 
-> **What did I just change that nothing tests?**
+> **O que eu acabei de mudar que nada testa?**
 
-It reads the coverage report your project already produces, crosses it with `git diff main...HEAD`, and ranks what is left by how dangerous it is.
+Ele lê o relatório de cobertura que seu projeto já produz, cruza com `git diff main...HEAD`, e ordena o que sobrou por quão perigoso é.
 
 ```
 language: TypeScript
@@ -38,238 +38,245 @@ gaps:     289
   [ 340] unit         src/components/ui/Button.tsx:22   Button        — 96 line(s),  7 branch(es)
 ```
 
-Read one line of that: a symbol name, the kind of test it is missing, how many uncovered lines you added, and how many branches are hiding in there. `!` means the symbol has **no** coverage at all. That is a to-do list, not a dashboard.
+Leia uma linha disso: um nome de símbolo, o tipo de teste que falta, quantas linhas descobertas você adicionou, e quantos branches estão escondidos ali. `!` significa que o símbolo não tem **nenhuma** cobertura. Isso é uma lista de afazeres, não um painel.
 
-## The whole flow, end to end
+## O fluxo inteiro, ponta a ponta
 
-You point redbar at a repo. It takes you from "I don't know what's untested" all the way to "tested code, and a report of what happened" — and the line down the middle is the whole design: **everything above it is measured, nothing above it calls a model.**
+Você aponta o redbar pra um repo. Ele te leva de "não sei o que não tem teste" até "código testado, e um relatório do que aconteceu". A linha no meio é o design inteiro: **tudo acima dela é medido, nada acima dela chama um modelo.**
 
 ```
-  you: a repo, on a branch with work on it
+  você: um repo, numa branch com trabalho feito
         │
         ▼
-  ┌─────────────────────────  THE MEASUREMENT  ·  zero LLM  ──────────────────────────┐
-  │  1. detect the language and the runner        from the project's own manifest      │
-  │  2. get a coverage report                     run the project's own command if none│
-  │  3. cross it with  git diff base...HEAD       changed ∩ uncovered                   │
-  │  4. attribute each uncovered line to a symbol, rank it, tag it unit/integration/e2e │
-  └────────────────────────────────────┬──────────────────────────────────────────────┘
+  ┌─────────────────────────  A MEDIÇÃO  ·  zero LLM  ──────────────────────────┐
+  │  1. detecta a linguagem e o runner        a partir do manifesto do projeto  │
+  │  2. pega um relatório de cobertura        roda o comando do projeto se não  │
+  │                                            houver um                        │
+  │  3. cruza com  git diff base...HEAD       mudou ∩ descoberto                │
+  │  4. atribui cada linha descoberta a um símbolo, ordena, marca               │
+  │     unit/integration/e2e                                                    │
+  └────────────────────────────────────┬────────────────────────────────────────┘
         │
         ▼
-   the document        .redbar/TESTING.md · gaps.json · REDBAR.html · REDBAR.pdf
-        │              what to test, in what order, at which layer, to whose standard
+   o documento        .redbar/TESTING.md · gaps.json · REDBAR.html · REDBAR.pdf
+        │             o que testar, em que ordem, em qual camada, seguindo qual
+        │             padrão
         │
-  ══════╪═══════════  the frontier: a model is allowed in here, and nowhere above  ═════
+  ══════╪═══════════  a fronteira: um modelo é permitido aqui, e em nenhum      ═════
+        │             lugar acima
+        ▼
+  ┌─────────────────────────  A ESCRITA  ·  um modelo, só julgamento  ─────────┐
+  │  5. entrega cada buraco ao agente, um de cada vez, com o padrão canônico   │
+  │     da camada                                                             │
+  │  6. barra o que ele escreveu   escopo · um arquivo · asserção · execução  │
+  │     (agente: sem voto)                                                    │
+  │  7. RODA a cobertura de novo, inspeciona de novo   um buraco está         │
+  │     "fechado" porque o relatório diz                                     │
+  └────────────────────────────────────┬───────────────────────────────────────┘
         │
         ▼
-  ┌─────────────────────────  THE WRITING  ·  one model, judgment only  ───────────────┐
-  │  5. hand each gap to the agent  one at a time, with the layer's canonical standard  │
-  │  6. gate what it wrote   scope · one-file · assertion · execution  (agent: no vote) │
-  │  7. RE-RUN coverage, inspect again   a gap is "closed" because the report says so   │
-  └────────────────────────────────────┬──────────────────────────────────────────────┘
-        │
-        ▼
-   the outcome         .redbar/OUTCOME.md · .html · .pdf
-                       measured verdicts, and the agent's own account, never mixed
+   o resultado        .redbar/OUTCOME.md · .html · .pdf
+                      vereditos medidos, e o relato do próprio agente, nunca
+                      misturados
 ```
 
-Two halves, one line between them. The top half is the compiler and git; run it twice, get the same bytes. The bottom half is where the model finally does the one thing it is good at — writing a test — and even there it gets no say in whether the gap actually closed. That is measured again, from a fresh coverage report.
+Duas metades, uma linha entre elas. A metade de cima é o compilador e o git. Roda duas vezes, sai o mesmo byte. A metade de baixo é onde o modelo finalmente faz a única coisa que ele sabe fazer bem: escrever um teste. E mesmo aí ele não tem voto sobre se o buraco realmente fechou. Isso é medido de novo, a partir de um relatório de cobertura novo.
 
-> **[See the whole flow as a diagram →](https://claude.ai/code/artifact/fac215b0-64a0-42c4-814f-eef64864049b)** — the twelve steps, the frontier, and the second measurement, laid out end to end.
+> **[Veja o fluxo inteiro num diagrama →](https://claude.ai/code/artifact/fac215b0-64a0-42c4-814f-eef64864049b)** Os doze passos, a fronteira, e a segunda medição, do início ao fim.
 
-### Finding the gaps — four steps, no magic
+### Encontrando os buracos: quatro passos, sem mágica
 
-1. **Detect** the language and the test runner from the project's own manifest.
-2. **Get** the coverage report the project produces — and if it is missing, run the project's own coverage command to produce it; if it is older than the code, say so, because a stale report hides the newest gaps best.
-3. **Cross** it with the diff — what *changed* and is *uncovered*.
-4. **Rank** by criticality, and label each gap `unit`, `integration`, or `e2e`.
+1. **Detecta** a linguagem e o runner de teste a partir do manifesto do projeto.
+2. **Pega** o relatório de cobertura que o projeto produz. Se não existir, roda o comando de cobertura do próprio projeto pra gerar um; se estiver mais velho que o código, avisa, porque um relatório desatualizado é ótimo pra esconder os buracos mais novos.
+3. **Cruza** com o diff: o que *mudou* e está *descoberto*.
+4. **Ordena** por criticidade, e marca cada buraco como `unit`, `integration` ou `e2e`.
 
-### The analysis is zero-LLM, and that is the whole point
+### A análise é zero-LLM, e esse é o ponto inteiro
 
-No model is called anywhere in this pipeline. The gap report is not an AI's opinion — it is your coverage report and your `git diff` talking.
+Nenhum modelo é chamado em nenhum ponto desse pipeline. O relatório de buracos não é opinião de IA. É o seu relatório de cobertura e o seu `git diff` falando.
 
-This is not purism. It is the source of the number's authority. A wrong number from a language model is bad. **A wrong number from a regex is worse**, because it arrives wearing the compiler's uniform. So the analysis stays mechanical, deterministic, and auditable — you can check it by hand, and it gives the same answer twice.
+Isso não é purismo. É de onde vem a autoridade do número. Um número errado vindo de um modelo de linguagem é ruim. **Um número errado vindo de uma regex é pior**, porque chega vestido de compilador. Por isso a análise fica mecânica, determinística e dá pra conferir na mão. E ela dá a mesma resposta duas vezes.
 
-Only the *writing* of a test touches an agent, and it does so through a small adapter.
+Só a *escrita* de um teste passa por um agente, e isso acontece através de um adaptador pequeno.
 
-### Two halves, and only one of them is a model
+### Duas metades, e só uma delas é modelo
 
-This is the shape of the whole tool, and the reason the tagline reads the way it does:
+Essa é a forma da ferramenta inteira, e o motivo do slogan ser esse:
 
-| | Who does it | Why |
+| | Quem faz | Por quê |
 |---|---|---|
-| **Finding the gaps** | The compiler and git. **Zero LLM.** | A number you can audit, that comes out the same twice. |
-| **Writing the tests** | Agents — Claude Code, Codex, or Copilot — **reading your spec**. | Writing a good test is judgment. That is what models are for. |
+| **Encontrar os buracos** | O compilador e o git. **Zero LLM.** | Um número que dá pra conferir, e que sai igual duas vezes. |
+| **Escrever os testes** | Agentes (Claude Code, Codex ou Copilot) **lendo a sua spec**. | Escrever um bom teste é julgamento. É pra isso que modelo serve. |
 
-Getting this backwards is how tools end up asking a model to *guess* at coverage. redbar asks a model to do the one thing a model is actually good at, and nothing else.
+Inverter isso é como ferramenta acaba pedindo pra um modelo *chutar* cobertura. O redbar pede pro modelo fazer a única coisa que ele realmente sabe fazer bem, e mais nada.
 
-### Spec-driven: the specialist agent **is** a markdown file
+### Guiado por spec: o agente especialista **é** um arquivo markdown
 
-Here is the part most AI testing tools get wrong. They hand the model a file and ask for a test. What comes back is written in **the model's** house style — whatever it saw most on GitHub that day — and it drifts between runs. Six prompts, six styles. Which is the exact problem you were trying to solve.
+Aqui está a parte que a maioria das ferramentas de teste com IA erra. Elas entregam um arquivo pro modelo e pedem um teste. O que volta está escrito no estilo **do modelo**: o que ele mais viu no GitHub naquele dia. E isso muda de execução pra execução. Seis prompts, seis estilos. Exatamente o problema que você queria resolver.
 
-So redbar never asks an agent to invent a standard. It hands it one:
+Por isso o redbar nunca pede pra um agente inventar um padrão. Ele entrega um:
 
 ```
-prompt = conventions/<language>/<layer>.md   ← the library's canonical standard
-       + the gap (file, symbol, uncovered lines, branches)
-       + the source
-       + one instruction: write exactly this test file, change nothing else
+prompt = conventions/<language>/<layer>.md   ← o padrão canônico da biblioteca
+       + o buraco (arquivo, símbolo, linhas descobertas, branches)
+       + o código-fonte
+       + uma instrução: escreva exatamente esse arquivo de teste, não mude mais nada
 ```
 
-**The "senior specialist in Rust integration testing" *is* the file `conventions/rust/integration.md`.** There is no fleet of 30 hand-tuned prompts to maintain. Swapping the specialist means editing a markdown file — no release, no deploy.
+**O "especialista sênior em teste de integração em Rust" *é* o arquivo `conventions/rust/integration.md`.** Não existe uma frota de 30 prompts ajustados na mão pra manter. Trocar o especialista é editar um arquivo markdown. Sem release, sem deploy.
 
-#### The standard is the library's, not a committee's
+#### O padrão é da biblioteca, não de um comitê
 
-This is a deliberate reversal, and it is the most important decision in the project.
+Essa é uma inversão deliberada, e é a decisão mais importante do projeto.
 
-The obvious move is to write *your company's* testing standard and feed the agent that. It is also wrong. The complaint is **"everyone writes tests their own way"** — and authoring a house standard does not fix that, **it adds a seventh way.** One more opinion, written by whoever came to the meeting, going stale the moment its author changes teams.
+O óbvio é escrever *o padrão de teste da sua empresa* e alimentar o agente com isso. Também está errado. A reclamação é **"cada um escreve teste do seu jeito"**, e criar um padrão da casa não resolve isso, **adiciona um sétimo jeito.** Mais uma opinião, escrita por quem apareceu na reunião, que fica velha no minuto em que o autor troca de time.
 
-There is already a tie-breaker, and it is free:
+Já existe um critério de desempate, e é de graça:
 
-| Layer | The spec is | Straight from |
+| Camada | A spec é | Direto de |
 |---|---|---|
-| **e2e** | Role-based locators, web-first assertions, no CSS selectors | [Playwright Best Practices](https://playwright.dev/docs/best-practices) |
-| **unit** (TS) | Vitest / Jest idiom — assert behavior, mock nothing | the official Vitest docs |
-| **unit** (Python) | plain `assert`, fixtures over `setUp` | the pytest docs |
-| **unit** (Java) | JUnit 5 + Mockito | the JUnit 5 user guide |
-| **integration** (Java) | `@SpringBootTest` + Testcontainers | Spring & Testcontainers docs |
-| **unit** (Rust) | `#[cfg(test)] mod tests` | The Rust Book, ch. 11 |
+| **e2e** | Locators por papel (role), asserções web-first, sem seletor CSS | [Playwright Best Practices](https://playwright.dev/docs/best-practices) |
+| **unit** (TS) | Idioma Vitest / Jest: afirma comportamento, não faz mock de nada | a documentação oficial do Vitest |
+| **unit** (Python) | `assert` puro, fixtures em vez de `setUp` | a documentação do pytest |
+| **unit** (Java) | JUnit 5 + Mockito | o guia oficial do JUnit 5 |
+| **integration** (Java) | `@SpringBootTest` + Testcontainers | a documentação do Spring e do Testcontainers |
+| **unit** (Rust) | `#[cfg(test)] mod tests` | The Rust Book, cap. 11 |
 
-**Nobody argues with the Playwright docs in a code review. Everybody argues with the standard a colleague invented last week.** That asymmetry is the whole point — and the model was *trained* on those docs, so it follows them far more faithfully than it follows anything you wrote on Tuesday.
+**Ninguém discute com a documentação do Playwright numa revisão de código. Todo mundo discute com o padrão que um colega inventou semana passada.** Essa assimetria é o ponto inteiro. E o modelo foi *treinado* nessa documentação, então ele segue ela muito mais fiel do que qualquer coisa que você escreveu na terça.
 
-Every convention answers the same five questions, so two languages' standards can be diffed side by side:
+Toda convenção responde às mesmas cinco perguntas, então dá pra comparar o padrão de duas linguagens lado a lado:
 
-1. Where the test file lives
-2. What one test looks like (a real, copy-pasteable example)
-3. What to assert — and what **not** to assert
-4. What to mock, and what to never mock *(the line between unit and integration lives here)*
-5. Naming
+1. Onde o arquivo de teste mora
+2. Como é um teste (um exemplo real, pronto pra copiar e colar)
+3. O que afirmar, e o que **não** afirmar
+4. O que mockar, e o que nunca mockar *(a linha entre unit e integration mora aqui)*
+5. Nomenclatura
 
-#### When your project really is different
+#### Quando o seu projeto é mesmo diferente
 
-Some choices are genuinely local and no library documents them: MSW or nock? Which fixture factory? Testcontainers, or a shared staging database?
+Algumas escolhas são mesmo locais, e nenhuma biblioteca documenta: MSW ou nock? Qual fixture factory? Testcontainers, ou um banco de staging compartilhado?
 
 ```
-conventions/<lang>/<layer>.md          # ships with redbar — the library's standard
-.redbar/conventions/<lang>/<layer>.md  # optional — your project's deltas, appended
+conventions/<lang>/<layer>.md          # vem com o redbar, o padrão da biblioteca
+.redbar/conventions/<lang>/<layer>.md  # opcional, os deltas do seu projeto, anexados
 ```
 
-You start from the standard and state only your deltas. **If that override file starts growing, that is the smell** — a project that overrides everything has not adopted a standard, it has written a house style with extra steps.
+Você parte do padrão e declara só os seus deltas. **Se esse arquivo de override começar a crescer, esse é o sinal de alerta.** Um projeto que sobrescreve tudo não adotou padrão nenhum, só escreveu um estilo da casa com passo extra.
 
-### Every layer, decided for you
+### Toda camada, decidida pra você
 
-You do not tell redbar which kind of test you need, and neither does a model. It infers it from the code, the way a senior would in two seconds:
+Você não diz ao redbar que tipo de teste precisa, e nem um modelo diz. Ele infere a partir do código, do jeito que um sênior faria em dois segundos:
 
-| Signal in the file | Layer |
+| Sinal no arquivo | Camada |
 |---|---|
-| A route or controller — `pages/`, `routes/`, `@RestController`, `#[get(`, `Route::`, Next.js `app/**/page.tsx` | **e2e** |
-| An I/O boundary — `repository`, `dao`, `client`, `gateway`, or it imports `sql` / `mongo` / `axios` / `jdbc` | **integration** |
-| Anything else | **unit** |
+| Uma rota ou controller: `pages/`, `routes/`, `@RestController`, `#[get(`, `Route::`, `app/**/page.tsx` do Next.js | **e2e** |
+| Uma fronteira de I/O: `repository`, `dao`, `client`, `gateway`, ou importa `sql` / `mongo` / `axios` / `jdbc` | **integration** |
+| Qualquer outra coisa | **unit** |
 
-A gap tagged `e2e` gets `conventions/<lang>/e2e.md`. A gap tagged `unit` gets the unit one. The layer picks the spec, the spec picks the style.
+Um buraco marcado `e2e` recebe `conventions/<lang>/e2e.md`. Um buraco marcado `unit` recebe o de unit. A camada escolhe a spec, a spec escolhe o estilo.
 
-It is a heuristic, and it is wrong sometimes. That is fine: the cost of being wrong is a test at the wrong layer, not a broken test. Putting a model here would buy very little and would cost the zero-LLM guarantee that makes the number worth trusting.
+É uma heurística, e às vezes erra. Tudo bem: o custo de errar é um teste na camada errada, não um teste quebrado. Colocar um modelo aqui compraria muito pouco e custaria a garantia zero-LLM que faz o número valer confiança.
 
-### Ranking: which gap actually matters
+### Ranking: qual buraco realmente importa
 
-Not all uncovered lines are equal. A 30-line straight-line function is safer than a 3-line one with four branches in it.
+Nem toda linha descoberta é igual. Uma função reta de 30 linhas é mais segura do que uma de 3 linhas com quatro branches dentro.
 
 ```
 score = uncovered lines × (symbol has zero coverage ? 2 : 1) × (1 + branches)
 ```
 
-Counting, not opinion. `branches` is a count of `if` / `for` / `while` / `case` / `catch` / `&&` / `||` — read from the code, ignoring the ones sitting inside comments, strings, and regex literals.
+Contagem, não opinião. `branches` é uma contagem de `if` / `for` / `while` / `case` / `catch` / `&&` / `||`, lida direto do código, ignorando os que estão dentro de comentários, strings e regex literais.
 
-### Criticality: what to fix first
+### Criticidade: o que corrigir primeiro
 
-A score of `5742` does not tell anyone what to do on a Monday. A band does. It comes from two facts already measured — **is any of this symbol covered?** and **how much branching hides in it?** — and nothing else:
+Um score de `5742` não diz a ninguém o que fazer numa segunda-feira. Uma faixa diz. Ela vem de dois fatos já medidos: **alguma parte desse símbolo está coberta?** e **quanto branch está escondido nele?** E nada mais.
 
-|  | 0 branches | 1–4 branches | 5+ branches |
+|  | 0 branches | 1-4 branches | 5+ branches |
 |---|---|---|---|
-| **no coverage** | medium | **high** | **critical** |
-| partly covered | low | low | medium |
+| **sem cobertura** | medium | **high** | **critical** |
+| parcialmente coberto | low | low | medium |
 
-The threshold of 5 is [McCabe's](https://en.wikipedia.org/wiki/Cyclomatic_complexity): past it, a function needs a test. **Untested branching logic is the worst cell** — every branch is a path nothing has ever executed. Untested straight-line code is bad but bounded. Partly-covered code at least has a test pointing at it that someone can extend.
+O limite de 5 é o de [McCabe](https://en.wikipedia.org/wiki/Cyclomatic_complexity): passou disso, a função precisa de teste. **Lógica de branch sem teste é a pior célula**: cada branch é um caminho que nada nunca executou. Código reto sem teste é ruim mas limitado. Código parcialmente coberto pelo menos tem um teste apontando pra ele que alguém pode estender.
 
-### The document — one inspection, every audience
+### O documento: uma inspeção, todo público
 
-The same measurement, rendered for whoever is reading. They cannot disagree with each other, and that is the only property that makes a report worth handing to someone who cannot re-run it.
+A mesma medição, renderizada pra quem está lendo. Elas não podem discordar entre si, e essa é a única propriedade que faz um relatório valer a pena entregar pra alguém que não vai rodar de novo.
 
-| File | For | What it is |
+| Arquivo | Pra quem | O que é |
 |---|---|---|
-| `.redbar/TESTING.md` | **the agent** | the brief it writes tests from — the work, the order, the layer, the standard, the provenance of every number. Self-contained: paste it into any agent, no redbar required |
-| `.redbar/gaps.json` | **machines** | the stable contract — every gap plus its severity, and a flag when the report is stale |
-| `REDBAR.html` | **you** | a ranked table with a print stylesheet |
-| `REDBAR.pdf` | **management** | the same numbers; nobody forwards a terminal screenshot |
-| a `<!-- redbar -->` PR comment | **the reviewer** | the gap table, editing its own comment on every push instead of stacking |
+| `.redbar/TESTING.md` | **o agente** | o briefing de onde ele escreve os testes: o trabalho, a ordem, a camada, o padrão, a origem de cada número. Autocontido: cola em qualquer agente, sem precisar do redbar |
+| `.redbar/gaps.json` | **máquinas** | o contrato estável: cada buraco mais sua severidade, e um flag quando o relatório está desatualizado |
+| `REDBAR.html` | **você** | uma tabela ordenada com folha de estilo pra impressão |
+| `REDBAR.pdf` | **gestão** | os mesmos números; ninguém encaminha print de terminal |
+| um comentário de PR com `<!-- redbar -->` | **o revisor** | a tabela de buracos, editando o próprio comentário a cada push em vez de empilhar |
 
 ```bash
-redbar briefing            # prints the brief and writes TESTING.md + HTML + PDF
-redbar inspect --html x.html --md x.md   # the table, the PR comment
+redbar briefing            # imprime o briefing e escreve TESTING.md + HTML + PDF
+redbar inspect --html x.html --md x.md   # a tabela, o comentário do PR
 ```
 
-The PDF comes from the Chrome already on the machine driving its own print stylesheet — no PDF library in the dependency tree. No browser installed? The HTML carries the stylesheet, so `Cmd+P` produces the same file.
+O PDF sai do Chrome que já está na máquina, rodando a própria folha de estilo de impressão. Nenhuma biblioteca de PDF na árvore de dependências. Sem navegador instalado? O HTML carrega o estilo, então `Cmd+P` produz o mesmo arquivo.
 
-## "Why not just write a skill for this?"
+## "Por que não só escrever uma skill pra isso?"
 
-The fair objection. You already have an agent. Write a skill — *"look at the diff, find what isn't tested, write the tests"* — and you are done in an afternoon. So why a tool?
+Objeção justa. Você já tem um agente. Escreve uma skill, *"olha o diff, acha o que não tem teste, escreve os testes"*, e está pronto numa tarde. Então por que uma ferramenta?
 
-Because a skill is a **prompt**, and the hard half of this problem is **not a prompt problem.**
+Porque skill é **prompt**, e a metade difícil desse problema **não é um problema de prompt.**
 
-| | A skill / prompt | redbar |
+| | Skill / prompt | redbar |
 |---|---|---|
-| **Where are the gaps?** | The model reads the code and *guesses* what looks untested. It has never executed a line of it. | It reads the coverage report. The runner already **measured** which lines executed. Not an inference — a measurement. |
-| **Is the answer stable?** | Ask twice, get two answers. Different model, different list. | Deterministic. Same input, same output, byte for byte. It can be diffed in a PR. |
-| **Can you trust the number?** | It is an opinion, and opinions cannot fail a build. | It is `git diff ∩ uncovered`. You can verify it by hand. |
-| **Does it run when nobody remembers?** | Only when a human invokes it, on a machine that has it installed. | **CI gate.** It runs on every PR, for everyone — including the people who don't use AI. |
-| **Does it work in Codex? Copilot?** | Skills are harness-specific. Rewrite it. | One engine, four faces: CLI, MCP, CI, library. Any agent, or none. |
-| **Does the test it wrote actually pass?** | The model says it does. | It **runs** the test. Fails twice → marked `needs-human` and deleted. **Never commits red.** |
-| **What does it cost to scan a big repo?** | The model must read the codebase to find candidates — slow, expensive, and it still misses things. | Seconds. It reads a report and a diff. Zero tokens. |
+| **Onde estão os buracos?** | O modelo lê o código e *chuta* o que parece sem teste. Ele nunca executou uma linha sequer. | Ele lê o relatório de cobertura. O runner já **mediu** quais linhas executaram. Não é inferência, é medição. |
+| **A resposta é estável?** | Pergunta duas vezes, ganha duas respostas. Modelo diferente, lista diferente. | Determinístico. Mesma entrada, mesma saída, byte a byte. Dá pra diffar num PR. |
+| **Dá pra confiar no número?** | É opinião, e opinião não derruba um build. | É `git diff ∩ descoberto`. Dá pra conferir na mão. |
+| **Roda quando ninguém lembra?** | Só quando um humano invoca, numa máquina que tem instalado. | **Portão de CI.** Roda em todo PR, pra todo mundo, incluindo quem não usa IA. |
+| **Funciona no Codex? No Copilot?** | Skill é específica do harness. Reescreve. | Um motor, quatro faces: CLI, MCP, CI, biblioteca. Qualquer agente, ou nenhum. |
+| **O teste que ele escreveu passa mesmo?** | O modelo diz que sim. | Ele **roda** o teste. Falha duas vezes → marcado `needs-human` e apagado. **Nunca comita vermelho.** |
+| **Quanto custa escanear um repo grande?** | O modelo precisa ler o código pra achar candidatos: lento, caro, e ainda assim erra coisa. | Segundos. Lê um relatório e um diff. Zero tokens. |
 
-### The two failures a prompt cannot fix
+### As duas falhas que um prompt não resolve
 
-**1. A model cannot know what is covered.** Coverage is a *runtime* fact — which lines the test suite actually executed. It is not visible in the source. An agent staring at `payment.ts` cannot tell you whether line 42 ran last night. It can only guess, confidently. redbar does not guess: the coverage report already contains the answer, measured by the runner.
+**1. Um modelo não pode saber o que está coberto.** Cobertura é um fato de *runtime*: quais linhas o conjunto de testes realmente executou. Não é visível no código-fonte. Um agente olhando pra `payment.ts` não consegue dizer se a linha 42 rodou ontem à noite. Ele só pode chutar, com confiança. O redbar não chuta: o relatório de cobertura já tem a resposta, medida pelo runner.
 
-This is the whole first half of the problem, and it is a **data problem, not an AI problem.** Reaching for a model here is using the one tool that structurally cannot answer the question.
+Essa é a primeira metade inteira do problema, e é um **problema de dado, não de IA.** Recorrer a um modelo aqui é usar a única ferramenta que estruturalmente não consegue responder a pergunta.
 
-**2. A prompt is opt-in, and opt-in does not change a team.** The developer who was already writing tests will run your skill. The one who wasn't, won't. Nothing changed.
+**2. Prompt é opcional, e opcional não muda um time.** O dev que já escrevia teste vai rodar sua skill. O que não escrevia, não vai. Nada mudou.
 
-> **You cannot force an agent to use a tool. You force the pull request.**
+> **Você não consegue forçar um agente a usar uma ferramenta. Você força o pull request.**
 
-The CI gate is the only layer nobody routes around — and a gate needs a number that is *reproducible*, not a model's opinion that varies by run. A skill can never be that gate, no matter how good the prompt is.
+O portão de CI é a única camada que ninguém consegue desviar. E um portão precisa de um número *reprodutível*, não da opinião de um modelo que varia a cada execução. Uma skill nunca pode ser esse portão, não importa quão bom seja o prompt.
 
-### And the skill is not the enemy
+### E a skill não é a inimiga
 
-redbar is not a replacement for your agent — it **aims** it.
+O redbar não substitui seu agente, ele **mira** o agente.
 
-Point the redbar MCP server at Claude Code, Codex, or Copilot, and the agent stops guessing what to test. It gets handed the exact symbol, the exact uncovered lines, and the canonical spec for the layer. **The skill is a consumer of redbar, not a competitor to it.**
+Aponta o servidor MCP do redbar pro Claude Code, Codex ou Copilot, e o agente para de chutar o que testar. Ele recebe o símbolo exato, as linhas descobertas exatas, e a spec canônica da camada. **A skill é consumidora do redbar, não concorrente dele.**
 
-What redbar contributes is the part a prompt structurally cannot: **the measurement, the determinism, and the gate.**
+O que o redbar contribui é a parte que um prompt estruturalmente não consegue: **a medição, o determinismo, e o portão.**
 
-## Why ten languages does not cost ten times more
+## Por que dez linguagens não custam dez vezes mais
 
-This is the design decision the whole project rests on.
+Essa é a decisão de design em que o projeto inteiro se apoia.
 
-**Coverage formats do not multiply with languages.** There is no format per language — there is a format per tooling ecosystem, and the languages cluster into three of them:
+**Formato de cobertura não multiplica com linguagem.** Não existe um formato por linguagem, existe um formato por ecossistema de ferramentas, e as linguagens se agrupam em três deles:
 
-| Format | In the registry today | Same parser also reads |
+| Formato | No registro hoje | O mesmo parser também lê |
 |---|---|---|
 | **lcov** | JavaScript, TypeScript, Rust | Ruby, C/C++, Swift |
 | **Cobertura XML** | Python, PHP, Go | C# (coverlet), Kotlin via Gradle |
 | **JaCoCo XML** | Java | Kotlin, Scala, Groovy |
 
-**Three parsers, and the hard part is already done for the right-hand column too.** Everything that actually differs between languages — the root marker, the runner, the coverage command, where the report lands, which libraries to install, the regex that spots a public symbol — is **data**, not code.
+**Três parsers, e a parte difícil já está pronta pra coluna da direita também.** Tudo que realmente muda entre linguagens (o marcador de raiz, o runner, o comando de cobertura, onde o relatório cai, quais bibliotecas instalar, a regex que identifica um símbolo público) é **dado**, não código.
 
-### Adding a language is one line
+### Adicionar uma linguagem é uma linha
 
-It is a row in a table (`src/languages.ts`):
+É uma linha numa tabela (`src/languages.ts`):
 
 ```ts
 {
   id: 'ruby',
   name: 'Ruby',
   markers: ['Gemfile'],
-  format: 'lcov',                                  // reuses the parser that already exists
+  format: 'lcov',                                  // reaproveita o parser que já existe
   runners: [{
     name: 'rspec',
     detect: /rspec/,
@@ -285,35 +292,35 @@ It is a row in a table (`src/languages.ts`):
 }
 ```
 
-No new module. No `switch (language)` anywhere in the codebase — if one ever appears, the design has failed. That constraint is enforced in review, and it is why the tool can grow sideways without growing heavier.
+Nenhum módulo novo. Nenhum `switch (language)` em lugar nenhum do código. Se um aparecer, o design falhou. Essa restrição é forçada na revisão, e é por isso que a ferramenta cresce pros lados sem ficar mais pesada.
 
-## What it does for a development team
+## O que ele faz por um time de desenvolvimento
 
-A tool nobody runs is a tool that does not exist. redbar is designed around a blunt fact:
+Uma ferramenta que ninguém roda é uma ferramenta que não existe. O redbar foi desenhado em torno de um fato seco:
 
-> **You cannot force an agent to use a tool. You force the pull request.**
+> **Você não consegue forçar um agente a usar uma ferramenta. Você força o pull request.**
 
-Three layers, in ascending order of force:
+Três camadas, em ordem crescente de força:
 
-| Layer | What it is | Who it binds |
+| Camada | O que é | Quem ela vincula |
 |---|---|---|
-| **CI gate** | The PR fails when new or changed code carries gaps above the threshold. Same binary as the local run. | **Everyone. Nobody routes around it.** |
-| **Repo config** | `AGENTS.md` and `.github/copilot-instructions.md` point at the same conventions document. | Every AI agent, automatically — nobody installs anything |
-| **MCP** | The agent calls redbar directly and already knows what to do. | Whoever wants the convenience |
+| **Portão de CI** | O PR falha quando código novo ou mudado carrega buracos acima do limite. Mesmo binário da execução local. | **Todo mundo. Ninguém desvia.** |
+| **Config do repo** | `AGENTS.md` e `.github/copilot-instructions.md` apontam pro mesmo documento de convenções. | Todo agente de IA, automaticamente. Ninguém instala nada |
+| **MCP** | O agente chama o redbar direto e já sabe o que fazer. | Quem quiser a conveniência |
 
-**MCP is what makes it pleasant. CI is what makes it mandatory.** Both, or neither works.
+**MCP é o que torna agradável. CI é o que torna obrigatório.** Os dois juntos, ou nenhum funciona.
 
-What a team actually gets:
+O que um time ganha, de verdade:
 
-- **Code review stops arguing about tests.** The gap list is in the PR, generated the same way for everyone. It is not a reviewer's opinion against an author's — it is the coverage report against the diff.
-- **Tests stop being a matter of taste.** The standard is not a colleague's preference you can push back on — it is the library's own documentation. That ends the argument instead of relocating it.
-- **New hires already know the standard.** They learned Vitest and Playwright the same way everyone else did: from the docs. There is no internal dialect to onboard into.
-- **AI-written tests stop drifting.** The agent is handed the canonical spec before it writes a line, so the same gap produces the same shape of test today and next month — regardless of which model wrote it.
-- **Legacy code is not a wall.** redbar only ever looks at what *changed*. A repo at 12% coverage is not asked to reach 80% — it is asked not to get worse. That is the only coverage rule anyone has ever actually kept.
+- **Revisão de código para de discutir sobre teste.** A lista de buracos está no PR, gerada do mesmo jeito pra todo mundo. Não é a opinião do revisor contra a do autor, é o relatório de cobertura contra o diff.
+- **Teste para de ser questão de gosto.** O padrão não é a preferência de um colega que dá pra contestar, é a própria documentação da biblioteca. Isso encerra a discussão em vez de só mudar ela de lugar.
+- **Quem entra no time já conhece o padrão.** Aprendeu Vitest e Playwright do mesmo jeito que todo mundo: pela documentação. Não existe dialeto interno pra aprender.
+- **Teste escrito por IA para de variar.** O agente recebe a spec canônica antes de escrever a primeira linha, então o mesmo buraco produz o mesmo formato de teste hoje e no mês que vem, não importa qual modelo escreveu.
+- **Código legado não é uma parede.** O redbar só olha pro que *mudou*. Um repo com 12% de cobertura não precisa chegar a 80%, precisa só não piorar. É a única regra de cobertura que alguém de fato cumpre.
 
-### The gate, in the pull request
+### O portão, no pull request
 
-`redbar ci` fails the build when the diff carries gaps above the threshold, and `--md` writes the same table as a comment the reviewer actually reads. A gate that only prints `FAIL` gets disabled by the third person it blocks; a gate that names the symbol gets a test written.
+`redbar ci` derruba o build quando o diff carrega buracos acima do limite, e `--md` escreve a mesma tabela como um comentário que o revisor de fato lê. Um portão que só imprime `FAIL` é desativado pela terceira pessoa que ele bloqueia; um portão que nomeia o símbolo faz alguém escrever o teste.
 
 ```yaml
 # .github/workflows/redbar.yml
@@ -344,146 +351,153 @@ jobs:
         run: exit 1
 ```
 
-The comment carries a `<!-- redbar -->` marker, so every push **edits the same comment** instead of stacking a new one. A pull request with eleven redbar comments is a pull request where nobody reads the redbar comment.
+O comentário carrega uma marca `<!-- redbar -->`, então todo push **edita o mesmo comentário** em vez de empilhar um novo. Um pull request com onze comentários do redbar é um pull request onde ninguém lê o comentário do redbar.
 
-The thresholds are `--max-critical` (default `0`) and `--max-high` (default: unlimited). Start with `--max-critical 0` and nothing else: it blocks only untested branching logic in code the branch actually touched, which is the one rule nobody argues with.
+Os limites são `--max-critical` (padrão `0`) e `--max-high` (padrão: ilimitado). Comece só com `--max-critical 0`: ele bloqueia só lógica de branch sem teste em código que a branch realmente tocou, a única regra que ninguém contesta.
 
 ## Status
 
-Honest about what exists today. The engine is done and exercised on real repositories; the surfaces around it are being built.
+Honestidade sobre o que existe hoje. O motor está pronto e testado em repositórios reais; as superfícies em volta dele estão sendo construídas.
 
 | | |
 |---|---|
-| ✅ **Engine** | Language + runner detection, three coverage parsers, diff crossing, symbol attribution, criticality ranking, layer classification |
-| ✅ **Verified on real repos** | A production React Native app (Jest) and redbar itself (Vitest). Every serious bug in this tool was found that way |
+| ✅ **Motor** | Detecção de linguagem + runner, três parsers de cobertura, cruzamento com diff, atribuição de símbolo, ranking de criticidade, classificação de camada |
+| ✅ **Verificado em repos reais** | Um app React Native de produção (Jest) e o próprio redbar (Vitest). Todo bug sério nessa ferramenta foi achado assim |
 | ✅ **CLI** | `redbar inspect`, `redbar briefing`, `redbar execute`, `redbar explain`, `redbar init`, `redbar ci`, `redbar mcp` |
-| ✅ **Reports** | `.redbar/gaps.json` for the agent, a markdown comment for the pull request, a printable HTML/PDF table for the human |
-| ✅ **CI gate** | `redbar ci --md` — fails the build and posts the gap table on the PR, editing its own comment instead of stacking |
-| ✅ **`execute`** | Hands each gap to whichever coding agent is installed, gates what it wrote, then re-measures. `OUTCOME.md` reports the measured verdicts and the agent's own account, never mixed |
-| ✅ **Agent skills** | `/redbar.inspect`, `/redbar.fix`, `/redbar.init` — the agent reads the gap and the spec, writes the test, **runs it**, and never leaves a red one |
-| ✅ **MCP server** | `redbar mcp` — same engine, exposed to any MCP client |
-| ✅ **Conventions** | TypeScript, Python, Java, Rust, PHP — unit, integration, e2e, each traceable to the library's own docs |
-| 🚧 **Conventions** for Go | Same five questions, each ecosystem's idiom |
-| 🚧 **`fix` worker pool** | Batch mode for CI: N gaps in parallel, partitioned by target file so two workers can never collide |
+| ✅ **Relatórios** | `.redbar/gaps.json` pro agente, um comentário markdown pro pull request, uma tabela HTML/PDF pra imprimir pro humano |
+| ✅ **Portão de CI** | `redbar ci --md` derruba o build e posta a tabela de buracos no PR, editando o próprio comentário em vez de empilhar |
+| ✅ **`execute`** | Entrega cada buraco pra qualquer agente de código instalado, barra o que ele escreveu, depois mede de novo. `OUTCOME.md` traz os vereditos medidos e o relato do próprio agente, nunca misturados |
+| ✅ **Skills de agente** | `/redbar.inspect`, `/redbar.fix`, `/redbar.init`: o agente lê o buraco e a spec, escreve o teste, **roda ele**, e nunca deixa um vermelho pra trás |
+| ✅ **Servidor MCP** | `redbar mcp`: mesmo motor, exposto pra qualquer cliente MCP |
+| ✅ **Convenções** | TypeScript, Python, Java, Rust, PHP: unit, integration, e2e, cada uma rastreável até a documentação da própria biblioteca |
+| 🚧 **Convenções** pra Go | As mesmas cinco perguntas, o idioma de cada ecossistema |
+| 🚧 **Pool de workers do `fix`** | Modo batch pra CI: N buracos em paralelo, particionados por arquivo alvo pra dois workers nunca colidirem |
 
-The design documents are in [`docs/superpowers/specs/`](superpowers/specs/), and the implementation plans in [`docs/superpowers/plans/`](superpowers/plans/).
+Os documentos de design estão em [`docs/superpowers/specs/`](superpowers/specs/), e os planos de implementação em [`docs/superpowers/plans/`](superpowers/plans/).
 
-## Use it with your agent
+## Use com seu agente
 
-The skills work in Claude Code today, and they follow one rule: **the skill never analyzes coverage itself — it runs the engine and reports what came back.** The LLM orchestrates; it does not calculate.
+As skills funcionam no Claude Code hoje, e seguem uma regra: **a skill nunca analisa cobertura sozinha, ela roda o motor e reporta o que voltou.** O LLM orquestra; ele não calcula.
 
 ```
-/redbar.inspect          find what this branch left untested
-/redbar.fix              write the missing tests, run them, never leave a red one
-/redbar.init             propose the test libraries (it never installs them)
+/redbar.inspect          acha o que essa branch deixou sem teste
+/redbar.fix               escreve os testes que faltam, roda eles, nunca deixa um vermelho
+/redbar.init               propõe as bibliotecas de teste (nunca instala)
 ```
 
-`/redbar.fix` is the whole pitch in one command. It reads `.redbar/gaps.json`, reads the canonical spec for that layer, writes **one** test file, **runs it**, and if it fails twice it deletes the file and marks the gap `needs-human`. It never weakens an assertion to get to green — a test that asserts nothing reports coverage that does not exist, which is the exact lie this tool was built to eliminate.
+`/redbar.fix` é o pitch inteiro num comando só. Ele lê `.redbar/gaps.json`, lê a spec canônica daquela camada, escreve **um** arquivo de teste, **roda ele**, e se falhar duas vezes apaga o arquivo e marca o buraco como `needs-human`. Ele nunca enfraquece uma asserção pra ficar verde: um teste que não afirma nada reporta uma cobertura que não existe, exatamente a mentira que essa ferramenta foi construída pra eliminar.
 
-Agent instructions live in [`AGENTS.md`](../AGENTS.md), with `CLAUDE.md` and `.github/copilot-instructions.md` pointing at it. One source of truth, not five — **the agent loads it on its own, nobody installs anything.**
+As instruções de agente moram em [`AGENTS.md`](../AGENTS.md), com `CLAUDE.md` e `.github/copilot-instructions.md` apontando pra lá. Uma fonte de verdade, não cinco. **O agente carrega sozinho, ninguém instala nada.**
 
-### `redbar execute` — the agent writes, redbar grades
+### `redbar execute`: o agente escreve, o redbar avalia
 
 ```bash
-redbar execute            # detects your agent, hands it every gap, then measures what changed
-redbar execute --max 3    # the three worst gaps only
+redbar execute            # detecta seu agente, entrega todo buraco, depois mede o que mudou
+redbar execute --max 3    # só os três piores buracos
 ```
 
-It finds whichever coding agent is installed (`claude`, `codex`, `copilot`, `gemini`,
-`cursor-agent`), hands it **one gap at a time** with the canonical standard for that layer, and puts
-everything it writes through four gates — none of which the agent has a vote in:
+Ele acha qualquer agente de código instalado (`claude`, `codex`, `copilot`, `gemini`,
+`cursor-agent`), entrega **um buraco de cada vez** com o padrão canônico da camada, e passa tudo que
+ele escreve por quatro portões, nenhum dos quais o agente tem voto:
 
-| Gate | If it fails |
+| Portão | Se falhar |
 |---|---|
-| Did it touch product code? | **reverted.** An agent that "fixes" the source to make its test pass has silently changed what your system does. |
-| Did it write more than one test file? | **all of them deleted**, marked `too-many-files`. Rule 1 of the prompt is "exactly one test file" — an ungraded extra file would still raise coverage and close the gap without ever passing the next two gates. |
-| Does the test assert anything? | **deleted.** A test that asserts nothing still raises coverage. That is the trick this gate exists to catch. |
-| Does the test pass? (one retry) | **deleted**, and the gap is marked `needs-human`. |
+| Tocou em código de produto? | **revertido.** Um agente que "conserta" o código-fonte pra fazer o teste dele passar mudou, em silêncio, o que o seu sistema faz. |
+| Escreveu mais de um arquivo de teste? | **todos apagados**, marcados `too-many-files`. A regra 1 do prompt é "exatamente um arquivo de teste": um arquivo extra sem avaliação ainda ia subir a cobertura e fechar o buraco sem nunca passar pelos próximos dois portões. |
+| O teste afirma alguma coisa? | **apagado.** Um teste que não afirma nada ainda sobe a cobertura. É essa a trapaça que esse portão existe pra pegar. |
+| O teste passa? (uma nova tentativa) | **apagado**, e o buraco é marcado `needs-human`. |
 
-Before each gap runs, redbar snapshots which files are already dirty and subtracts that baseline
-from what the agent touched — so gate one never reverts a human's uncommitted edit, and gap two
-never inherits or deletes gap one's test file just because it is still sitting in the tree.
+Antes de cada buraco rodar, o redbar tira um snapshot de quais arquivos já estão sujos e subtrai
+essa base do que o agente tocou. Assim o primeiro portão nunca reverte uma edição não commitada de
+um humano, e o segundo buraco nunca herda ou apaga o arquivo de teste do primeiro só porque ele
+ainda está na árvore.
 
-Then it **re-runs the coverage command and inspects again**. A gap is `closed` because the fresh
-report says those lines now execute — not because the agent said so. `OUTCOME.md` renders the
-measured verdicts (`closed`, `open`, `no-assertion`, `too-many-files`, `touched-source`) and the
-agent's own account (`needs-human`, `timeout`, `no-output`) in two separate blocks, and the second
-never gets to promote itself into the first.
+Depois ele **roda o comando de cobertura de novo e inspeciona de novo**. Um buraco fica `closed`
+porque o relatório novo diz que aquelas linhas agora executam, não porque o agente disse. `OUTCOME.md`
+mostra os vereditos medidos (`closed`, `open`, `no-assertion`, `too-many-files`, `touched-source`) e o
+relato do próprio agente (`needs-human`, `timeout`, `no-output`) em dois blocos separados, e o segundo
+nunca vira o primeiro.
 
-`execute` refuses to run on a dirty working tree. It writes files and reverts files, and it cannot
-tell its own writes from your uncommitted work — reverting the wrong one has no reflog and no stash
-behind it. It names what is dirty and tells you to commit or stash first. There is no `--force`:
-the same stance `git rebase` takes, for the same reason.
+`execute` se recusa a rodar numa working tree suja. Ele escreve e reverte arquivo, e não consegue
+distinguir a própria escrita do seu trabalho não commitado. Reverter o errado não tem reflog nem
+stash por trás. Ele nomeia o que está sujo e manda você commitar ou dar stash antes. Não existe
+`--force`: a mesma postura do `git rebase`, pelo mesmo motivo.
 
-## Try it — the whole journey in four commands
+## Testa: a jornada inteira em quatro comandos
 
-Requires Node 20.11+. Stand in any repo, on a branch with work on it.
+Exige Node 20.11+. Fica em qualquer repo, numa branch com trabalho feito.
 
 ```bash
-# 1. what did I change that nothing tests?
-redbar inspect                 # the ranked gap list — measured, zero LLM
+# 1. o que eu mudei que nada testa?
+redbar inspect                 # a lista de buracos ordenada, medida, zero LLM
 
-# 2. give me the brief to hand my agent
-redbar briefing                # writes .redbar/TESTING.md + HTML + PDF
+# 2. me dá o briefing pra entregar ao meu agente
+redbar briefing                # escreve .redbar/TESTING.md + HTML + PDF
 
-# 3. let my agent write the tests, and grade the result
-redbar execute                 # detects your agent, gates its work, re-measures
+# 3. deixa meu agente escrever os testes, e avalia o resultado
+redbar execute                 # detecta seu agente, barra o trabalho dele, mede de novo
 
-# 4. prove any single number is real
-redbar explain Checkout        # the lcov line, the diff line, the score arithmetic
+# 4. prova que um número qualquer é real
+redbar explain Checkout        # a linha do lcov, a linha do diff, a conta do score
 ```
 
-Missing a coverage report? `inspect` runs your project's own coverage command for you. Only tests, no coverage step configured? It fails loudly with the exact command for **your** runner — jest and vitest do not share one, and neither do maven and gradle — and never guesses. No tests at all? It stops and points you at `redbar init`, which proposes the libraries and installs nothing.
+Sem relatório de cobertura? O `inspect` roda o comando de cobertura do seu projeto por você. Só tem
+teste, sem passo de cobertura configurado? Ele falha alto, com o comando exato pro **seu** runner.
+jest e vitest não compartilham um, e nem maven e gradle. E nunca chuta. Sem teste nenhum? Ele para e
+te aponta pro `redbar init`, que propõe as bibliotecas e não instala nada.
 
-Working from the redbar checkout instead of an install? Swap `redbar` for `npm run try --` or `npx tsx src/cli.ts`.
+Trabalhando a partir do checkout do redbar em vez de uma instalação? Troca `redbar` por
+`npm run try --` ou `npx tsx src/cli.ts`.
 
-## Design principles
+## Princípios de design
 
-These are load-bearing. Each one is a decision that can be pointed at.
+Esses princípios sustentam o projeto. Cada um é uma decisão que dá pra apontar.
 
-- **Zero LLM in the analysis.** The number's authority comes from the compiler and git. That is the pitch.
-- **Zero runtime dependencies.** The coverage parsers are hand-written; the whole multi-LLM integration is `spawn()`. CI fails the build if a dependency shows up.
-- **It never installs anything on its own.** Editing someone's `package.json` or `pom.xml` unasked is a rejected PR at best and a supply-chain incident at worst. `init` proposes; the human approves.
-- **It never leaves a red test behind.** A generated test that fails twice is marked `needs-human` and deleted. One red test leaking into a demo erases everything else.
-- **Every difference between languages is data.** If a `switch (language)` appears, the design failed.
-- **Deterministic output.** Same input, same order, byte for byte. A report that reshuffles cannot be diffed in a PR, and a CI gate built on it would flap.
+- **Zero LLM na análise.** A autoridade do número vem do compilador e do git. Esse é o pitch.
+- **Zero dependência de runtime.** Os parsers de cobertura são escritos na mão; a integração multi-LLM inteira é um `spawn()`. O CI derruba o build se aparecer uma dependência.
+- **Ele nunca instala nada sozinho.** Editar o `package.json` ou `pom.xml` de alguém sem pedir é, na melhor das hipóteses, um PR rejeitado e, na pior, um incidente de supply chain. O `init` propõe; o humano aprova.
+- **Ele nunca deixa um teste vermelho pra trás.** Um teste gerado que falha duas vezes é marcado `needs-human` e apagado. Um teste vermelho vazando numa demo apaga tudo o resto.
+- **Toda diferença entre linguagens é dado.** Se aparecer um `switch (language)`, o design falhou.
+- **Saída determinística.** Mesma entrada, mesma ordem, byte a byte. Um relatório que embaralha não dá pra diffar num PR, e um portão de CI construído em cima dele ficaria instável.
 
 ## Releases
 
-Semantic versioning, and the tag is what publishes. There is no release bot and no
-`semantic-release` in the dependency tree — a tool that sells zero runtime dependencies does not
-bring thirty of them to cut a version.
+Versionamento semântico, e a tag é o que publica. Não existe bot de release nem `semantic-release`
+na árvore de dependências. Uma ferramenta que vende zero dependência de runtime não traz trinta
+delas só pra cortar uma versão.
 
 ```bash
-npm run release:patch   # 0.1.0 → 0.1.1   a fix
-npm run release:minor   # 0.1.0 → 0.2.0   a feature, or a change to the public surface
-npm run release:major   # 0.1.0 → 1.0.0   a break
+npm run release:patch   # 0.1.0 → 0.1.1   uma correção
+npm run release:minor   # 0.1.0 → 0.2.0   uma feature, ou mudança na superfície pública
+npm run release:major   # 0.1.0 → 1.0.0   uma quebra
 ```
 
-Each one bumps `package.json`, commits, tags, and pushes the tag. Pushing the tag triggers
-[`release.yml`](../.github/workflows/release.yml), which **refuses to publish unless the build is
-green** — typecheck, the full suite, the build, the zero-dependency assertion, and a check that the
-tag matches the version in `package.json`. A tag is a promise; it does not get cut from a red build.
+Cada um atualiza o `package.json`, commita, cria a tag, e dá push na tag. O push da tag dispara o
+[`release.yml`](../.github/workflows/release.yml), que **se recusa a publicar se o build não estiver
+verde**: typecheck, a suíte inteira, o build, a verificação de zero dependência, e a checagem de que
+a tag bate com a versão do `package.json`. Uma tag é uma promessa; não se corta de um build vermelho.
 
-`preversion` runs the typecheck and the tests locally too, so a broken release fails on your machine
-before it ever reaches CI.
+O `preversion` roda o typecheck e os testes localmente também, então um release quebrado falha na
+sua máquina antes de chegar ao CI.
 
-While the major version is `0`, the public surface — the CLI flags, the `gaps.json` shape, the
-`Language` registry type — can still shift in a minor. [`CHANGELOG.md`](../CHANGELOG.md) says when it
-does.
+Enquanto a versão major for `0`, a superfície pública (as flags da CLI, o formato do `gaps.json`, o
+tipo `Language` do registro) ainda pode mudar numa minor. O [`CHANGELOG.md`](../CHANGELOG.md) avisa
+quando isso acontece.
 
-## Contributing
+## Contribuindo
 
-The most valuable contribution is not code — it is **running redbar on a real repository and telling us what it got wrong.**
+A contribuição mais valiosa não é código. É **rodar o redbar num repositório real e contar pra
+gente o que ele errou.**
 
-Every serious bug in this tool so far was found that way, and not one of them was caught by a hand-written fixture:
+Todo bug sério dessa ferramenta até agora foi achado assim, e nenhum deles foi pego por uma fixture
+escrita na mão:
 
-- A React Native app revealed that a file **no test imports never appears in the coverage report at all** — so the file with zero tests was invisible to the tool built to find files with zero tests. The exact inverse of the promise.
-- The same app revealed that real React writes `const Button = (...)` and exports at the bottom, so demanding the `export` keyword left every component named `(no symbol)`.
-- Running redbar on redbar revealed that a static data table scored 21 phantom branches — keywords counted from inside regex literals and comments.
+- Um app React Native revelou que **um arquivo que nenhum teste importa nunca aparece no relatório de cobertura**. Então o arquivo com zero teste ficava invisível pra ferramenta construída pra achar arquivo com zero teste. O inverso exato da promessa.
+- O mesmo app revelou que React de verdade escreve `const Button = (...)` e exporta no final do arquivo, então exigir a palavra-chave `export` deixava todo componente nomeado `(no symbol)`.
+- Rodar o redbar no próprio redbar revelou que uma tabela de dados estática pontuou 21 branches fantasmas: palavras-chave contadas de dentro de regex literais e comentários.
 
-Fixtures test what you already thought of. Real repositories test what you did not.
+Fixture testa o que você já tinha pensado. Repositório real testa o que você não tinha.
 
-## License
+## Licença
 
 [MIT](../LICENSE) © Emerson Silva

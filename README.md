@@ -73,11 +73,13 @@ A divisão é o projeto inteiro: achar o buraco é compilador e git; escrever é
 ## Começando
 
 ```bash
-redbar inspect       # o que eu mudei que nada testa? (gera o coverage se faltar)
-redbar briefing      # o documento pro agente + HTML + PDF pra gerência
-redbar execute       # o agente escreve, o redbar julga e re-mede
-redbar explain X     # de onde veio o número de X, conta por conta
+redbar i         # inspect — o que eu mudei que nada testa? (gera o coverage se faltar)
+redbar b         # briefing — o documento pro agente + HTML + PDF pra gerência
+redbar x         # execute — o agente escreve, o redbar julga e re-mede
+redbar why X     # explain — de onde veio o número de X, conta por conta
 ```
+
+Cada atalho tem o nome completo (`inspect`, `briefing`, `execute`, `explain`), e `--all` em qualquer um olha o repo inteiro em vez do diff.
 
 Ainda não publicado no npm — rode a partir do clone:
 

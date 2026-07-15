@@ -73,11 +73,13 @@ The split is the whole project: finding the hole is the compiler and git; writin
 ## Getting started
 
 ```bash
-redbar inspect       # what did I change that nothing tests? (generates coverage if missing)
-redbar briefing      # the document for your agent + HTML + PDF for management
-redbar execute       # the agent writes, redbar judges and re-measures
-redbar explain X     # where X's number came from, step by step
+redbar i         # inspect — what did I change that nothing tests? (generates coverage if missing)
+redbar b         # briefing — the document for your agent + HTML + PDF for management
+redbar x         # execute — the agent writes, redbar judges and re-measures
+redbar why X     # explain — where X's number came from, step by step
 ```
+
+Every shortcut has a full name (`inspect`, `briefing`, `execute`, `explain`), and `--all` on any of them scans the whole repo instead of the diff.
 
 Not on npm yet — run from the clone:
 

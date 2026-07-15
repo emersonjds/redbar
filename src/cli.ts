@@ -41,6 +41,8 @@ Usage:
 
   --all   scan the whole repository instead of the diff. The diff is the default: nobody takes a
           legacy repo to 80%, everybody can avoid making it worse. Use --all for the first look.
+
+  shortcuts:  i = inspect · b = briefing · x = execute · why = explain
 `
 
 const LAYERS: TestKind[] = ['unit', 'integration', 'e2e']
@@ -576,9 +578,17 @@ function runCi(argv: string[]): number {
   return failed ? 1 : 0
 }
 
+// npm tem `npm i`, cargo tem `cargo b`: comando de todo dia merece uma letra. `why` no lugar de
+// uma letra pro explain porque `redbar why buscarPorTermos` se lê sozinho.
+const ALIASES: Record<string, string> = { i: 'inspect', b: 'briefing', x: 'execute', why: 'explain' }
+
+export function canonical(command: string): string {
+  return ALIASES[command] ?? command
+}
+
 function main(): void {
   const argv = process.argv.slice(2)
-  const command = argv[0]
+  const command = argv[0] && canonical(argv[0])
 
   if (!command || command === '--help' || command === '-h') {
     console.log(HELP)

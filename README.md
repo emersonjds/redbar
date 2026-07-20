@@ -177,10 +177,6 @@ Baseado no [lagune.ai](https://github.com/wellwelwel/lagune), do [Well Poku](htt
 
 O propósito cabe numa frase: **a IA nunca dá nota na própria prova.**
 
-## Documentação
-
-O mergulho fundo — cada decisão de design e o porquê — está em [docs/design.md](docs/design.md). Specs e planos em [docs/superpowers/](docs/superpowers/).
-
 ## Licença
 
 [MIT](LICENSE) © Emerson Silva

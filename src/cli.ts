@@ -5,7 +5,7 @@ import { basename, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { agentById, detectAgent } from './agents.js'
 import { renderBriefing, type Conventions } from './briefing.js'
-import { CLIENTS, clientById, launch } from './clients.js'
+import { CLIENTS, clientById, launch, npxLaunch } from './clients.js'
 import { detect } from './detect.js'
 import { inspect, type Inspection, type InspectOptions } from './engine.js'
 import { executeGaps, type Effects } from './execute.js'
@@ -35,7 +35,7 @@ Usage:
   redbar explain [symbol] [--all] [--path <dir>] [--base <ref>]  where a number came from
   redbar inspect [path] [--all] [--base <ref>] [--json] [--html <file>] [--md <file>] [--out <dir>] [--top <n>]
   redbar mcp [path]                                              MCP server on stdio
-  redbar mcp-config [client]                                     paste-ready MCP registration, PATH-proof
+  redbar mcp-config [client] [--local]                          paste-ready MCP registration (npx; --local for a clone)
   redbar init [path]
   redbar ci [path] [--max-critical <n>] [--max-high <n>] [--base <ref>] [--md <file>]
   redbar --help
@@ -522,20 +522,22 @@ function runMcp(argv: string[]): void {
 }
 
 /**
- * The fix for issue #13. Prints the paste-ready MCP registration for a client — or every client —
- * using an ABSOLUTE launch (absolute node + absolute cli.js), so no PATH lookup can fail when the
- * host spawns the server. redbar writes nothing: it prints the command, the owner runs it (rule 6),
- * and running it IS the authorization.
+ * The fix for issue #13. Prints the paste-ready MCP registration for a client — or every client.
+ * redbar writes nothing: it prints the command, the owner runs it (rule 6), and running it IS the
+ * authorization.
  *
- * The absolute cli.js is redbar's own entry, resolved through the npm-link symlink — the same
- * realpathSync the isMain guard needs, and for the same reason: `npm link` leaves process.argv[1]
- * as the symlink, but the host must be handed the real file.
+ * Default launch is `npx -y redbar mcp` — portable, no clone, no path, the install a real user
+ * gets once redbar is on npm. `--local` emits the absolute-path launch (absolute node + absolute
+ * cli.js) for a contributor running from a clone before publish; the absolute cli.js is resolved
+ * through the npm-link symlink, the same realpathSync the isMain guard needs and for the same
+ * reason (`npm link` leaves process.argv[1] as the symlink; the host needs the real file).
  */
 function runMcpConfig(argv: string[]): void {
-  const { positional } = parseArgs(argv, new Set())
-  const entry = process.argv[1] ?? fileURLToPath(import.meta.url)
-  const cliPath = realpathSync(entry)
-  const l = launch(cliPath, process.execPath)
+  const { positional, flags } = parseArgs(argv, new Set())
+  const local = flags.local === true
+  const l = local
+    ? launch(realpathSync(process.argv[1] ?? fileURLToPath(import.meta.url)), process.execPath)
+    : npxLaunch
 
   const requested = positional[0]
   const selected = requested ? [clientById(requested)].filter(Boolean) : CLIENTS
@@ -556,10 +558,14 @@ function runMcpConfig(argv: string[]): void {
   process.stderr.write(
     [
       'redbar: next, in order —',
-      '  1. the owner runs the line above — that connects the MCP',
+      '  1. the owner (or the agent) runs the line above — that connects the MCP',
       '  2. ask the agent to use redbar: it calls redbar_briefing, which scans the code and',
       '     writes .redbar/TESTING.md — the ranked list of what to test, per layer',
       '  3. the agent writes those tests top to bottom, following each layer\'s standard',
+      local
+        ? '\nredbar: (--local) absolute-path launch, for a clone before publish. Drop --local once\n' +
+          'redbar: redbar is on npm — then the line is `npx -y redbar mcp`, portable and path-free.'
+        : '',
       '',
     ].join('\n'),
   )

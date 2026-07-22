@@ -1,10 +1,24 @@
 import { describe, expect, it } from 'vitest'
-import { CLIENTS, clientById, launch, type Launch } from '../src/clients.js'
+import { CLIENTS, clientById, launch, npxLaunch, type Launch } from '../src/clients.js'
 
-// an absolute launch, as cli.ts builds it: absolute node, absolute cli.js, then `mcp`
+// the --local launch, as cli.ts builds it: absolute node, absolute cli.js, then `mcp`
 const abs: Launch = { command: '/usr/bin/node', args: ['/opt/redbar/dist/cli.js', 'mcp'] }
 
-describe('launch', () => {
+describe('npxLaunch — the default, portable install', () => {
+  it('is `npx -y redbar mcp` — no path, so it works on any machine once redbar is on npm', () => {
+    expect(npxLaunch).toEqual({ command: 'npx', args: ['-y', 'redbar', 'mcp'] })
+  })
+
+  it('renders a one-line, path-free registration for every client', () => {
+    for (const client of CLIENTS) {
+      const out = client.render(npxLaunch)
+      expect(out).toContain('npx')
+      expect(out).not.toContain('/') // no absolute path leaks into the portable form
+    }
+  })
+})
+
+describe('launch — the --local, pre-publish form', () => {
   it('is the mcp server started by absolute node + absolute cli.js — no bare names, no PATH lookup', () => {
     expect(launch('/opt/redbar/dist/cli.js', '/usr/bin/node')).toEqual({
       command: '/usr/bin/node',

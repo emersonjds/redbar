@@ -122,20 +122,22 @@ Cada atalho tem o nome completo (`inspect`, `briefing`, `execute`, `explain`), e
 
 ## MCP: conecte no agente que você já usa
 
-Instalou o MCP no projeto, o agente para de chutar o que testar: pergunta ao redbar e recebe medição. Um comando por cliente:
+A forma antiga registrava `redbar` pelado — o host do MCP não achava no PATH sanitizado. Agora o redbar imprime a linha pronta, com caminho absoluto.
+
+**Setup:**
 
 ```bash
-claude mcp add redbar -- redbar mcp     # Claude Code
-codex mcp add redbar -- redbar mcp      # Codex
-gemini mcp add redbar redbar mcp        # Gemini CLI
-copilot mcp add redbar -- redbar mcp    # Copilot CLI
+redbar mcp-config codex    # só para Codex
+redbar mcp-config          # mostra pra todos os clientes
 ```
 
-Cursor, VS Code e qualquer outro cliente MCP: o JSON é sempre o mesmo (`.cursor/mcp.json`, `.mcp.json`; no VS Code a chave é `servers` em `.vscode/mcp.json`):
+redbar imprime a linha exata pro seu terminal. Cada cliente tem sua forma — Claude Code e Codex usam `--`, Gemini CLI não usa, Copilot CLI é JSON. O comando já sai no formato certo. Copie a saída e rode — isso é a autorização.
 
-```json
-{ "mcpServers": { "redbar": { "command": "redbar", "args": ["mcp"] } } }
-```
+**Depois de conectado, o fluxo é:**
+
+1. Peça pro agente usar o redbar → ele chama `redbar_briefing`
+2. redbar varre o código, calcula os gaps e grava `.redbar/TESTING.md` — a lista ranqueada do que testar, em que camada
+3. O agente escreve os testes de cima pra baixo, seguindo o padrão oficial de cada camada
 
 | Tool | O que faz |
 |---|---|
@@ -143,7 +145,9 @@ Cursor, VS Code e qualquer outro cliente MCP: o JSON é sempre o mesmo (`.cursor
 | `redbar_inspect` | a lista de gaps, medida |
 | `redbar_explain` | a auditoria de um número — a resposta pra "isso é alucinação?" |
 
-Os artefatos (`TESTING.md`, `gaps.json`) ficam gravados no **teu projeto**, em `.redbar/`. O `execute` é só CLI, de propósito: quem chama o MCP já *é* um modelo; ele não spawna outro.
+Os artefatos (`TESTING.md`, `gaps.json`) ficam gravados no **teu projeto**, em `.redbar/`.
+
+Quando o redbar chegar ao npm, bastará `npx -y redbar mcp` em qualquer máquina — funciona sem clone nem link.
 
 ## O motor lê a cara do projeto
 

@@ -1,0 +1,28 @@
+name: Ideia
+description: Uma linguagem, um cliente MCP, um comportamento
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Que dor isso resolve
+      description: Comece pelo problema, não pela solução. Qual é o furo hoje?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: A ideia
+      description: |
+        Se for adicionar uma linguagem, um agente ou um cliente MCP, lembre: no redbar isso é uma
+        linha de dado numa tabela (`src/languages.ts`, `src/agents.ts`, `src/clients.ts`), não código
+        novo. Descreva a linha.
+    validations:
+      required: true
+  - type: checkboxes
+    id: rules
+    attributes:
+      label: Cabe no design?
+      options:
+        - label: Não pede dependência de runtime nova (o redbar tem zero, de propósito)
+        - label: Não coloca um modelo de IA no caminho da análise

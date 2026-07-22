@@ -33,6 +33,26 @@ because it arrives wearing the compiler's uniform.
    output decide whether a gap closed, stop: that is the failure this whole project exists to
    prevent, reintroduced one layer down.
 
+## The team
+
+Specialist agents live in `.claude/agents/`, versioned so every contributor and every
+harness (Claude Code, Codex, Cursor) inherits the same roster. `/spp` orchestrates — it reads
+the request and routes to the right one. Every agent obeys the rules above; none commits,
+pushes, or installs.
+
+| Agent | Call it for |
+|---|---|
+| `core` | the engine — `engine.ts`, `gap.ts`, `coverage/*`, `languages.ts`, `symbols.ts`. Pure TS, zero-dep, registry-as-data |
+| `arquiteto` | design decisions, boundary reviews, specs. Guards the 7 rules. Call it **before** touching an invariant |
+| `qa` | tests, fixtures, conventions fidelity, e2e of CLI/MCP, dogfooding on real repos. Blocks weakened asserts |
+| `llm-mcp` | the AI surface — `mcp.ts`, `briefing.ts`, `agents.ts`, `clients.ts`, `skills/`. Keeps `execute` the only model call |
+| `oss` | governance — issue/PR triage, releases + npm, changelog, `.github/`, community |
+| `scribe` | prose a human reads — README, CLI copy, docs, changelog wording |
+
+Boundaries that keep them from overlapping: `core` implements, `arquiteto` approves the design;
+`scribe` writes the prose, `oss` owns the governance; `qa` is the test conscience — it does not
+ship features.
+
 ## Testing this project
 
 TDD. Failing test first, run it, watch it fail, then implement.

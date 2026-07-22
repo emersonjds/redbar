@@ -1,0 +1,37 @@
+name: Bug
+description: Algo no redbar não faz o que devia
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: O que aconteceu
+      description: O que você esperava, e o que veio no lugar.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Como reproduzir
+      description: |
+        O comando exato e, se der, um repo real ou fixture pequeno. Fixture testa o que você já
+        imaginou; repo real testa o que ninguém imaginou — é onde os bugs do redbar aparecem.
+      placeholder: |
+        1. cd /meu/repo
+        2. redbar i
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: Ambiente
+      description: Saída de `redbar --version`, `node --version`, e o SO.
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Saída
+      description: Cole o erro ou o relatório inteiro. Ele é determinístico — a saída bruta ajuda.
+      render: shell

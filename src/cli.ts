@@ -5,6 +5,7 @@ import { basename, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { agentById, detectAgent } from './agents.js'
 import { renderBriefing, type Conventions } from './briefing.js'
+import { CLIENTS, clientById, launch } from './clients.js'
 import { detect } from './detect.js'
 import { inspect, type Inspection, type InspectOptions } from './engine.js'
 import { executeGaps, type Effects } from './execute.js'
@@ -34,6 +35,7 @@ Usage:
   redbar explain [symbol] [--all] [--path <dir>] [--base <ref>]  where a number came from
   redbar inspect [path] [--all] [--base <ref>] [--json] [--html <file>] [--md <file>] [--out <dir>] [--top <n>]
   redbar mcp [path]                                              MCP server on stdio
+  redbar mcp-config [client]                                     paste-ready MCP registration, PATH-proof
   redbar init [path]
   redbar ci [path] [--max-critical <n>] [--max-high <n>] [--base <ref>] [--md <file>]
   redbar --help
@@ -519,6 +521,50 @@ function runMcp(argv: string[]): void {
   serve(tools)
 }
 
+/**
+ * The fix for issue #13. Prints the paste-ready MCP registration for a client — or every client —
+ * using an ABSOLUTE launch (absolute node + absolute cli.js), so no PATH lookup can fail when the
+ * host spawns the server. redbar writes nothing: it prints the command, the owner runs it (rule 6),
+ * and running it IS the authorization.
+ *
+ * The absolute cli.js is redbar's own entry, resolved through the npm-link symlink — the same
+ * realpathSync the isMain guard needs, and for the same reason: `npm link` leaves process.argv[1]
+ * as the symlink, but the host must be handed the real file.
+ */
+function runMcpConfig(argv: string[]): void {
+  const { positional } = parseArgs(argv, new Set())
+  const entry = process.argv[1] ?? fileURLToPath(import.meta.url)
+  const cliPath = realpathSync(entry)
+  const l = launch(cliPath, process.execPath)
+
+  const requested = positional[0]
+  const selected = requested ? [clientById(requested)].filter(Boolean) : CLIENTS
+  if (requested && selected.length === 0) {
+    throw new Error(
+      `redbar: unknown client "${requested}". Known: ${CLIENTS.map((c) => c.id).join(', ')}`,
+    )
+  }
+
+  for (const client of selected as typeof CLIENTS) {
+    console.log(`# ${client.label}`)
+    console.log(client.render(l))
+    console.log('')
+  }
+
+  // the guided hand-off: what the owner and the agent do next. This is what turns "configure
+  // redbar" into an end-to-end flow — register, then measure, then write the tests it found.
+  process.stderr.write(
+    [
+      'redbar: next, in order —',
+      '  1. the owner runs the line above — that connects the MCP',
+      '  2. ask the agent to use redbar: it calls redbar_briefing, which scans the code and',
+      '     writes .redbar/TESTING.md — the ranked list of what to test, per layer',
+      '  3. the agent writes those tests top to bottom, following each layer\'s standard',
+      '',
+    ].join('\n'),
+  )
+}
+
 function runInit(argv: string[]): void {
   const { positional } = parseArgs(argv, new Set())
   const root = positional[0] ?? '.'
@@ -612,6 +658,9 @@ function main(): void {
         break
       case 'mcp':
         runMcp(argv.slice(1))
+        break
+      case 'mcp-config':
+        runMcpConfig(argv.slice(1))
         break
       case 'inspect':
         runInspect(argv.slice(1))

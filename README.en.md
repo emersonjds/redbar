@@ -122,20 +122,22 @@ Every shortcut has a full name (`inspect`, `briefing`, `execute`, `explain`), an
 
 ## MCP: plug into the agent you already use
 
-With the MCP installed, the agent stops guessing what to test: it asks redbar and gets a measurement. One command per client:
+The old way registered `redbar` bare — the MCP host couldn't find it in the sanitized PATH. Now redbar prints the line ready, with absolute paths.
+
+**Setup:**
 
 ```bash
-claude mcp add redbar -- redbar mcp     # Claude Code
-codex mcp add redbar -- redbar mcp      # Codex
-gemini mcp add redbar redbar mcp        # Gemini CLI
-copilot mcp add redbar -- redbar mcp    # Copilot CLI
+redbar mcp-config codex    # just for Codex
+redbar mcp-config          # shows all clients
 ```
 
-Cursor, VS Code and any other MCP client: the JSON is always the same (`.cursor/mcp.json`, `.mcp.json`; VS Code uses a `servers` key in `.vscode/mcp.json`):
+redbar prints the exact line for your terminal. Each client has its form — Claude Code and Codex use `--`, Gemini CLI doesn't, Copilot CLI is JSON. The command prints it in the right format already. Copy the output and run it — that's the authorization.
 
-```json
-{ "mcpServers": { "redbar": { "command": "redbar", "args": ["mcp"] } } }
-```
+**After it's connected, the flow is:**
+
+1. Ask your agent to use redbar → it calls `redbar_briefing`
+2. redbar scans your code, calculates gaps, and writes `.redbar/TESTING.md` — the ranked list of what to test, at each layer
+3. The agent writes the tests top-down, following each layer's official standard
 
 | Tool | What it does |
 |---|---|
@@ -143,7 +145,9 @@ Cursor, VS Code and any other MCP client: the JSON is always the same (`.cursor/
 | `redbar_inspect` | the gap list, measured |
 | `redbar_explain` | the audit of one number — the answer to "is this a hallucination?" |
 
-The artifacts (`TESTING.md`, `gaps.json`) are written into **your project**, under `.redbar/`. `execute` is CLI-only on purpose: whoever calls the MCP already *is* a model; it doesn't spawn another one.
+The artifacts (`TESTING.md`, `gaps.json`) are written into **your project**, under `.redbar/`.
+
+When redbar hits npm, just `npx -y redbar mcp` on any machine — works without clone or link.
 
 ## The engine reads the project's shape
 

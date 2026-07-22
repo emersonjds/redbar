@@ -55,10 +55,18 @@ describe('redbar mcp — real server over stdio', () => {
     expect(names).toEqual(['redbar_briefing', 'redbar_explain', 'redbar_inspect'])
   })
 
-  it('runs redbar_inspect on redbar itself and returns real measured text', async () => {
-    const res = await send(3, 'tools/call', { name: 'redbar_inspect', arguments: { path: repoRoot } })
-    const content = (res.result as { content: Array<{ text: string }> }).content
-    // the inspect report always names the detected language — proof the engine actually ran
-    expect(content[0]!.text).toMatch(/language:/i)
+  it('runs redbar_inspect through the real server and returns measured text', async () => {
+    // point at a fixture that ships its own coverage report, scanned with --all so no git diff is
+    // needed. Deterministic on a clean checkout — the engine measures, it does not depend on a
+    // coverage run having happened first (the bug that made this test flaky).
+    const fixture = fileURLToPath(new URL('../fixtures/ts', import.meta.url))
+    const res = await send(3, 'tools/call', {
+      name: 'redbar_inspect',
+      arguments: { path: fixture, all: true },
+    })
+    const result = res.result as { isError?: boolean; content: Array<{ text: string }> }
+    expect(result.isError).toBeFalsy()
+    // the report names the language it detected — proof the engine actually ran, end to end
+    expect(result.content[0]!.text).toMatch(/language:\s*TypeScript/i)
   }, 60_000)
 })

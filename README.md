@@ -103,35 +103,53 @@ Essa divisão é o projeto inteiro: quem acha o buraco é o compilador e o git. 
 
 ## Como usar
 
-Instala uma vez, roda no teu repo, e ele faz o resto: descobre a linguagem, o runner, roda a cobertura se faltar, e te diz o que testar.
+Roda no teu repo, e ele faz o resto: descobre a linguagem, o runner, roda a cobertura se faltar, e te diz o que testar.
+
+**Sem instalar nada** — use via `npx`:
 
 ```bash
-# instalar (ainda fora do npm — direto do clone):
-git clone https://github.com/emersonjds/redbar.git && cd redbar && npm install && npm link
+npx -y redbar i         # inspect — o que eu mudei que nada testa?
+npx -y redbar b         # briefing — o documento pro agente + HTML + PDF pra gerência
+npx -y redbar x         # execute — o agente escreve, o redbar julga e re-mede
+npx -y redbar why X     # explain — de onde veio o número de X, conta por conta
 ```
 
+**Ou instale global** uma vez (opcional):
+
 ```bash
-cd /teu/repo
-redbar i         # inspect — o que eu mudei que nada testa?
-redbar b         # briefing — o documento pro agente + HTML + PDF pra gerência
-redbar x         # execute — o agente escreve, o redbar julga e re-mede
-redbar why X     # explain — de onde veio o número de X, conta por conta
+npm i -g redbar
+```
+
+Depois é só:
+
+```bash
+redbar i         # inspect
+redbar b         # briefing
+redbar x         # execute
+redbar why X     # explain
 ```
 
 Cada atalho tem o nome completo (`inspect`, `briefing`, `execute`, `explain`), e `--all` em qualquer um olha o repo inteiro em vez do diff.
 
+**Contribuir?** Clone o repo — veja [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## MCP: conecte no agente que você já usa
 
-A forma antiga registrava `redbar` pelado — o host do MCP não achava no PATH sanitizado. Agora o redbar imprime a linha pronta, com caminho absoluto.
-
-**Setup:**
+A forma mais simples é rodar:
 
 ```bash
-redbar mcp-config codex    # só para Codex
-redbar mcp-config          # mostra pra todos os clientes
+redbar mcp-config <cliente>    # imprime a linha pronta pra seu cliente
+redbar mcp-config              # mostra pra todos
 ```
 
-redbar imprime a linha exata pro seu terminal. Cada cliente tem sua forma — Claude Code e Codex usam `--`, Gemini CLI não usa, Copilot CLI é JSON. O comando já sai no formato certo. Copie a saída e rode — isso é a autorização.
+redbar imprime a linha exata. Copie a saída e rode no seu terminal — isso é a autorização. Exemplos de clientes:
+
+- **Codex / Claude Code**: `codex mcp add redbar -- npx -y redbar mcp`
+- **Gemini CLI**: `gemini mcp add redbar npx -y redbar mcp` (sem `--`)
+- **Cursor**: JSON em `.cursor/mcp.json`, chave `mcpServers`: `{ "command": "npx", "args": ["-y","redbar","mcp"] }`
+- **VS Code**: JSON em `.vscode/mcp.json`, chave `servers`: `{ "command": "npx", "args": ["-y","redbar","mcp"] }`
+
+Contribuidor rodando de um clone antes da publicação? Use `redbar mcp-config <cliente> --local` pra ter a forma de caminho absoluto.
 
 **Depois de conectado, o fluxo é:**
 

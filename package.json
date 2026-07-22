@@ -36,6 +36,7 @@
     "build": "tsc -p tsconfig.build.json",
     "prepare": "npm run build",
     "postbuild": "chmod +x dist/cli.js",
+    "prepublishOnly": "npm run typecheck && npm run test",
     "release:patch": "npm version patch -m \"chore: release v%s\" && git push --follow-tags",
     "release:minor": "npm version minor -m \"chore: release v%s\" && git push --follow-tags",
     "release:major": "npm version major -m \"chore: release v%s\" && git push --follow-tags",

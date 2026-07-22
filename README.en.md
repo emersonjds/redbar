@@ -103,35 +103,53 @@ The split is the whole project: finding the hole is the compiler and git; writin
 
 ## How to use
 
-Install once, run it in your repo, and it does the rest: detects the language and the runner, generates coverage if it's missing, and tells you what to test.
+Run it in your repo, and it does the rest: detects the language and the runner, generates coverage if it's missing, and tells you what to test.
+
+**Without installing anything** — use via `npx`:
 
 ```bash
-# install (not on npm yet — straight from the clone):
-git clone https://github.com/emersonjds/redbar.git && cd redbar && npm install && npm link
+npx -y redbar i         # inspect — what did I change that nothing tests?
+npx -y redbar b         # briefing — the document for your agent + HTML + PDF for management
+npx -y redbar x         # execute — the agent writes, redbar judges and re-measures
+npx -y redbar why X     # explain — where X's number came from, step by step
 ```
 
+**Or install globally** once (optional):
+
 ```bash
-cd /your/repo
-redbar i         # inspect — what did I change that nothing tests?
-redbar b         # briefing — the document for your agent + HTML + PDF for management
-redbar x         # execute — the agent writes, redbar judges and re-measures
-redbar why X     # explain — where X's number came from, step by step
+npm i -g redbar
+```
+
+Then it's just:
+
+```bash
+redbar i         # inspect
+redbar b         # briefing
+redbar x         # execute
+redbar why X     # explain
 ```
 
 Every shortcut has a full name (`inspect`, `briefing`, `execute`, `explain`), and `--all` on any of them scans the whole repo instead of the diff.
 
+**Contributing?** Clone the repo — see [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## MCP: plug into the agent you already use
 
-The old way registered `redbar` bare — the MCP host couldn't find it in the sanitized PATH. Now redbar prints the line ready, with absolute paths.
-
-**Setup:**
+The simplest way is to run:
 
 ```bash
-redbar mcp-config codex    # just for Codex
-redbar mcp-config          # shows all clients
+redbar mcp-config <client>    # prints the ready line for your client
+redbar mcp-config             # shows all
 ```
 
-redbar prints the exact line for your terminal. Each client has its form — Claude Code and Codex use `--`, Gemini CLI doesn't, Copilot CLI is JSON. The command prints it in the right format already. Copy the output and run it — that's the authorization.
+redbar prints the exact line. Copy the output and run it in your terminal — that's the authorization. Examples of clients:
+
+- **Codex / Claude Code**: `codex mcp add redbar -- npx -y redbar mcp`
+- **Gemini CLI**: `gemini mcp add redbar npx -y redbar mcp` (no `--`)
+- **Cursor**: JSON at `.cursor/mcp.json`, key `mcpServers`: `{ "command": "npx", "args": ["-y","redbar","mcp"] }`
+- **VS Code**: JSON at `.vscode/mcp.json`, key `servers`: `{ "command": "npx", "args": ["-y","redbar","mcp"] }`
+
+Contributing from a clone before publication? Use `redbar mcp-config <client> --local` to get the absolute path form.
 
 **After it's connected, the flow is:**
 

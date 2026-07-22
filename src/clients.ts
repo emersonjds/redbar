@@ -24,9 +24,17 @@ export type McpClient = {
 }
 
 /**
- * The PATH-proof launch. `command` is the absolute node binary (process.execPath), `args` is the
- * absolute cli.js followed by `mcp`. Both are passed in so this stays pure and testable — cli.ts
- * supplies the real paths, resolving the npm-link symlink first (see cli.ts `isMain`).
+ * The install a real user gets, once redbar is on npm: `npx -y redbar mcp`. npx fetches redbar,
+ * caches it and resolves the binary itself — no clone, no build, no absolute path, and nothing for
+ * the user to copy. One line registers the server; the MCP host runs npx and the agent sees the
+ * tools. This is the default `mcp-config` emits.
+ */
+export const npxLaunch: Launch = { command: 'npx', args: ['-y', 'redbar', 'mcp'] }
+
+/**
+ * The local, pre-publish launch: absolute node + absolute cli.js. `--local` emits this — for a
+ * contributor running from a clone before the package is on npm. Both paths are passed in so this
+ * stays pure and testable; cli.ts resolves the npm-link symlink first (see cli.ts `isMain`).
  */
 export function launch(cliPath: string, nodePath: string): Launch {
   return { command: nodePath, args: [cliPath, 'mcp'] }

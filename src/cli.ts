@@ -9,7 +9,7 @@ import { CLIENTS, clientById, launch, npxLaunch } from './clients.js'
 import { detect } from './detect.js'
 import { inspect, type Inspection, type InspectOptions } from './engine.js'
 import { executeGaps, type Effects } from './execute.js'
-import { explain, matchGaps } from './explain.js'
+import { bandReason, explain, matchGaps, scoreArithmetic } from './explain.js'
 import type { Language } from './languages.js'
 import { serve, type ToolArgs, type ToolBox } from './mcp.js'
 import { reconcile } from './outcome.js'
@@ -178,6 +178,30 @@ export function authorizationOutcome(opts: {
 }): 'proceed' | 'ask' | 'stop' {
   if (opts.yes) return 'proceed'
   return opts.isTTY ? 'ask' : 'stop'
+}
+
+/**
+ * The authorization plan: what the agent is about to be handed, and WHY each one, before it edits
+ * anything. The why is measured — `severity`, `scoreArithmetic`, `bandReason`, the same strings
+ * `redbar explain` prints, byte-identical every run. No sentence here is model-authored; that is
+ * the whole point of showing it before consent (spec risk #1).
+ */
+export function renderExecutePlan(gaps: Gap[]): string {
+  const lines = [`redbar will hand ${gaps.length} gap(s) to the agent, worst first:`, '']
+  for (const gap of gaps) {
+    lines.push(
+      `  ${severity(gap)} · score ${gap.score} · ${gap.symbol ?? '(no symbol)'} — ${gap.file}:${gap.lines[0]}`,
+      `    score = ${scoreArithmetic(gap)}`,
+      `    ${bandReason(gap).replace(/^ — /, '')}`,
+      `    layer: ${gap.kind}`,
+      '',
+    )
+  }
+  lines.push(
+    `Nothing above is model-authored — it is ${'`'}coverage${'`'} × ${'`'}git diff${'`'}. The agent`,
+    `writes the tests; redbar grades them.`,
+  )
+  return lines.join('\n')
 }
 
 function runInspect(argv: string[]): void {

@@ -5,7 +5,9 @@ import {
   dirtyTreeError,
   gateResult,
   parseSeverityThreshold,
+  renderExecutePlan,
 } from '../src/cli.js'
+import { bandReason, scoreArithmetic } from '../src/explain.js'
 
 describe('canonical', () => {
   it('expande os atalhos de uma letra, estilo cargo/npm', () => {
@@ -22,7 +24,7 @@ describe('canonical', () => {
 })
 import type { Gap } from '../src/types.js'
 
-const gap = (overrides: Partial<Pick<Gap, 'fullyUncovered' | 'branches'>>): Gap => ({
+const gap = (overrides: Partial<Gap>): Gap => ({
   file: 'src/foo.ts',
   symbol: 'foo',
   lines: [1],
@@ -131,5 +133,21 @@ describe('authorizationOutcome', () => {
 
   it('stops — touches nothing — when there is no --yes and no TTY to ask', () => {
     expect(authorizationOutcome({ yes: false, isTTY: false })).toBe('stop')
+  })
+})
+
+describe('renderExecutePlan', () => {
+  const critical = gap({ fullyUncovered: true, branches: 6, symbol: 'Checkout', score: 240 })
+
+  it('shows each gap with its measured why — band, symbol, the score arithmetic, the reason', () => {
+    const plan = renderExecutePlan([critical])
+    expect(plan).toContain('Checkout')
+    expect(plan).toContain('critical')
+    expect(plan).toContain(scoreArithmetic(critical)) // the arithmetic, verbatim
+    expect(plan).toContain(bandReason(critical).replace(/^ — /, '')) // the measured reason
+  })
+
+  it('the why is the same string every run — nothing here is model-authored', () => {
+    expect(renderExecutePlan([critical])).toBe(renderExecutePlan([critical]))
   })
 })

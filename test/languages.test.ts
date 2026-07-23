@@ -43,6 +43,19 @@ describe('language registry', () => {
       expect(ts.testFilePattern.test('src/features/busca/aplicar-busca.ts')).toBe(false)
       expect(ts.testFilePattern.test('src/republic/office.ts')).toBe(false) // "public" inside a name
     })
+
+    // Found on a real admin front-end: MSW handlers under mocks/ and a generated TanStack router
+    // (routeTree.gen.ts) both ranked as gaps. Same class of noise as public/ and .d.ts — never
+    // product code a test should chase.
+    it('excludes MSW handlers under mocks/ and generated *.gen files', () => {
+      expect(ts.testFilePattern.test('src/features/financial-accounts/mocks/handlers.ts')).toBe(true)
+      expect(ts.testFilePattern.test('src/routeTree.gen.ts')).toBe(true)
+    })
+
+    it('does not over-match a name that merely contains "mocks" or "gen"', () => {
+      expect(ts.testFilePattern.test('src/mocks-helper.ts')).toBe(false)
+      expect(ts.testFilePattern.test('src/gen.ts')).toBe(false)
+    })
   })
 
   // unit libs belong to the runner, never to the language — a jest project told to install

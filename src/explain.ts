@@ -63,7 +63,7 @@ export function scoreArithmetic(gap: Gap): string {
     : `${gap.lines.length} × (1 + ${gap.branches}) = ${gap.score}`
 }
 
-function bandReason(gap: Gap): string {
+export function bandReason(gap: Gap): string {
   if (gap.fullyUncovered) {
     if (gap.branches >= 5) return ' — no coverage, and 5+ branches (McCabe: past here, it needs a test)'
     if (gap.branches >= 1) return ' — no coverage, and it makes at least one decision'

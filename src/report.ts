@@ -1,5 +1,6 @@
 // Pure renderers: string in/out, no disk access. Callers (scripts/*, cli.ts) do the writing.
 import type { Inspection } from './engine.js'
+import { bandReason, scoreArithmetic } from './explain.js'
 import { isMeasured, type Outcome, type Verdict } from './outcome.js'
 import { kindPriority, profileLabel, type Profile } from './profile.js'
 import { ranked, severity, type Severity } from './severity.js'
@@ -131,6 +132,24 @@ const esc = (s: string) =>
 // the top of the list is the whole product — a long tail nobody reads is not a report
 const TOP = 40
 
+// The measured why, byte-identical to `redbar explain` — scoreArithmetic and bandReason, never a
+// model-authored sentence. The reader clicks and audits; the report never asks to be trusted.
+const why = (g: Gap) => {
+  const coverage = g.fullyUncovered
+    ? 'no covered line anywhere in the file — every branch is a path no test has run'
+    : 'partly covered — a test already points at it, extend that one'
+  return `<details class="why">
+        <summary>why ${severity(g)}?</summary>
+        <div class="why-body">
+          <div>score = ${esc(scoreArithmetic(g))} &nbsp;<span class="dim">(uncovered lines × (no coverage ? 2 : 1) × (1 + branches))</span></div>
+          <div>band = <b>${severity(g)}</b>${esc(bandReason(g))}</div>
+          <div>coverage: ${coverage}</div>
+          <div>${g.lines.length} uncovered line(s): ${g.lines.join(', ')}</div>
+          <div class="dim">Measured: <code>${esc(g.file)}</code> × git diff. No language model produced this.</div>
+        </div>
+      </details>`
+}
+
 const row = (g: Gap, i: number) => {
   const sev = severity(g)
   return `
@@ -139,7 +158,7 @@ const row = (g: Gap, i: number) => {
       <td><span class="sev sev-${sev}">${sev}</span></td>
       <td class="score">${g.score}</td>
       <td><span class="kind kind-${g.kind}">${g.kind}</span></td>
-      <td class="sym">${g.symbol ? esc(g.symbol) : '<em>—</em>'}</td>
+      <td class="sym">${g.symbol ? esc(g.symbol) : '<em>—</em>'}${why(g)}</td>
       <td class="file"><span class="path">${esc(g.file)}</span><span class="ln">:${g.lines[0]}</span></td>
       <td class="num">${g.lines.length}</td>
       <td class="num">${g.branches}</td>
@@ -262,6 +281,13 @@ export function renderHtml(inspection: Inspection, repoName: string, profile: Pr
   .file .path { color: #5c6370; }
   .file .ln { color: #9aa1ac; }
 
+  .why { margin-top: 4px; font-weight: 400; }
+  .why > summary { cursor: pointer; color: #5c6370; font-size: 10.5px; font-family: ui-sans-serif, sans-serif; }
+  .why-body { margin: 6px 0 2px; padding: 8px 10px; background: #f7f8fa; border-radius: 6px;
+              font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11px; line-height: 1.7; }
+  .why-body .dim { color: #9aa1ac; }
+  .why-body code { color: #5c6370; }
+
   .kind {
     display: inline-block; padding: 1px 7px; border-radius: 20px;
     font-size: 10.5px; font-weight: 600; letter-spacing: .02em;
@@ -280,6 +306,7 @@ export function renderHtml(inspection: Inspection, repoName: string, profile: Pr
     thead { display: table-header-group; }
     tr { break-inside: avoid; }
     .stats { break-inside: avoid; }
+    .why { display: none; }
   }
 </style>
 

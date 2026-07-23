@@ -196,7 +196,7 @@ Expected: PASS, typecheck clean.
 
 ```bash
 git add src/profile.ts test/profile.test.ts
-git commit -m "feat(profile): detecta front/back/fullstack a partir do manifest, sem tocar no score"
+git commit -m "feat(profile): detect front/back/fullstack from the manifest, without touching the score"
 ```
 
 ---
@@ -378,7 +378,7 @@ include `e2eTools`.
 
 ```bash
 git add src/languages.ts src/runner.ts test/runner.test.ts test/languages.test.ts
-git commit -m "feat(runner): detecta a ferramenta e2e do manifest, playwright ou cypress"
+git commit -m "feat(runner): detect the e2e tool from the manifest, playwright or cypress"
 ```
 
 ---
@@ -483,7 +483,7 @@ Expected: the header blockquote, and `5` second-level sections (or 6 if you spli
 
 ```bash
 git add conventions/ts/e2e.cypress.md
-git commit -m "feat(conventions): padrão e2e do cypress, rastreável à doc do cypress"
+git commit -m "feat(conventions): cypress e2e standard, traceable to the cypress docs"
 ```
 
 ---
@@ -673,7 +673,7 @@ they were updated in Step 1 to the new arity and pass.
 
 ```bash
 git add src/briefing.ts test/briefing.test.ts
-git commit -m "feat(briefing): seção de foco por perfil de projeto, sem reordenar o score"
+git commit -m "feat(briefing): focus section by project profile, without reordering the score"
 ```
 
 ---
@@ -799,7 +799,7 @@ Expected: the report tests PASS; typecheck still red only at the `cli.ts` caller
 
 ```bash
 git add src/report.ts test/report.test.ts
-git commit -m "feat(report): bloco de foco por perfil no html e pdf"
+git commit -m "feat(report): focus block by profile in the html and pdf"
 ```
 
 ---
@@ -907,7 +907,7 @@ output on the same repo is byte-identical to before this branch — the score mu
 
 ```bash
 git add src/cli.ts
-git commit -m "feat(cli): resolve perfil e ferramenta e2e do manifest e passa pro relatório"
+git commit -m "feat(cli): resolve profile and e2e tool from the manifest and pass to the report"
 ```
 
 ---
@@ -938,7 +938,7 @@ Expected: green (docs change nothing).
 
 ```bash
 git add README.md
-git commit -m "docs: documenta a detecção da ferramenta e2e e a lente de perfil de projeto"
+git commit -m "docs: document the e2e tool detection and the project-profile lens"
 ```
 
 ---

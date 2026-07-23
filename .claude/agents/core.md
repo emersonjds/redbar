@@ -2,7 +2,7 @@
 name: core
 description: "Engenheiro do motor do redbar — TypeScript puro, zero dependência, parsers de cobertura escritos na mão, registry-como-dado. Acione para mexer em engine.ts, gap.ts, coverage/*, languages.ts, symbols.ts, classify.ts, severity.ts, detect.ts, git.ts, runner.ts — qualquer código da análise. Se a tarefa é fazer o número sair de conta, é aqui."
 tools: Read, Grep, Glob, Edit, Write, Bash
-model: sonnet
+model: opus
 effort: high
 ---
 

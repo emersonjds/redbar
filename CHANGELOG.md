@@ -10,6 +10,17 @@ While the major version is `0`, the public surface — the CLI flags, the `gaps.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`execute` não escrevia teste nenhum — em qualquer LLM.** O agente é dirigido headless
+  (`agente -p <prompt>`), e nesse modo todo CLI (claude, codex, copilot, gemini, cursor) **nega uma
+  escrita de arquivo que não consegue aprovar com um humano**: o agente rodava, escrevia zero, e o
+  `execute` marcava `no-output` pra todo gap. Cada linha do registry de agentes agora carrega a flag
+  de auto-aprovação de escrita do próprio vendor (`--permission-mode acceptEdits`,
+  `--sandbox workspace-write`, `--allow-tool write`, `--approval-mode auto_edit`, `-f`). redbar não
+  força modelo: dirige o agente na config do dev, não o re-configura. Spec em
+  `docs/superpowers/specs/2026-07-23-execute-multi-llm-headless-write.md`.
+
 ## [0.1.2] — 2026-07-22
 
 A correção de descoberta do servidor MCP. Depois de `npm link`, o Codex (e os outros clientes) não

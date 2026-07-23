@@ -4,13 +4,13 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 /**
- * "os links funcionem corretamente" — no dead link ships. And a second, sharper guard: the README's
+ * Links must resolve — no dead link ships. And a second, sharper guard: the README's
  * MCP section cannot drift back into the fragile forms that caused #13 (a bare `redbar` binary, or
  * `copilot mcp add`, which does not exist). A doc that tells people to run a command that fails is a
  * dead link with extra steps.
  */
 const root = fileURLToPath(new URL('..', import.meta.url))
-const docs = ['README.md', 'README.en.md', 'docs/design.md']
+const docs = ['README.md', 'docs/design.md']
 
 /** GitHub's heading slug: lowercase, drop punctuation, spaces→hyphens, keep unicode letters/accents */
 const slug = (heading: string): string =>
@@ -57,7 +57,7 @@ describe('in-page anchors resolve to a real heading', () => {
 })
 
 describe('the MCP section cannot regress to the forms that caused #13', () => {
-  for (const doc of ['README.md', 'README.en.md']) {
+  for (const doc of ['README.md']) {
     const body = () => readFileSync(join(root, doc), 'utf8')
 
     it(`${doc} points to redbar mcp-config, the PATH-proof entry point`, () => {

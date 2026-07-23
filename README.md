@@ -7,11 +7,11 @@
 
 <br>
 
-### O agente escreve os testes. O redbar decide quais, e confere.
+### The agent writes the tests. redbar decides which, and checks.
 
-A cobertura e o `git diff` dizem o que falta testar, sem IA no meio.
-Seu agente escreve, seguindo a doc oficial de cada lib.
-O redbar mede de novo e diz o que fechou de verdade.
+Coverage and `git diff` say what's left untested, with no AI in the middle.
+Your agent writes the tests, following each library's official docs.
+redbar measures again and says what actually closed.
 
 <br>
 
@@ -19,50 +19,27 @@ O redbar mede de novo e diz o que fechou de verdade.
 [![ci](https://github.com/emersonjds/redbar/actions/workflows/ci.yml/badge.svg)](https://github.com/emersonjds/redbar/actions/workflows/ci.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![runtime dependencies: 0](https://img.shields.io/badge/runtime%20deps-0-success)](package.json)
-[![zero LLM na análise](https://img.shields.io/badge/an%C3%A1lise-zero%20LLM-critical)](docs/design.md)
+[![zero LLM in analysis](https://img.shields.io/badge/analysis-zero%20LLM-critical)](docs/design.md)
 
-**[Como usar](#como-usar)** · **[MCP](#mcp-conecte-no-agente-que-você-já-usa)** · **[O fluxo, desenhado](https://claude.ai/code/artifact/fac215b0-64a0-42c4-814f-eef64864049b)** · **[Design](docs/design.md)**
-
-**Português** · [English](README.en.md)
+**[How to use](#how-to-use)** · **[MCP](#mcp-plug-into-the-agent-you-already-use)** · **[The flow, drawn](https://claude.ai/code/artifact/fac215b0-64a0-42c4-814f-eef64864049b)** · **[Design](docs/design.md)**
 
 </div>
 
 ---
 
-## O problema que ele resolve
+## The problem it solves
 
-- Todo repositório tem teste faltando, e ninguém sabe **onde**. Cobertura de "43%" não diz se *o que você mudou ontem* está testado.
-- Quando uma IA escreve o teste, sai no estilo que o modelo acordou querendo. Seis prompts, seis estilos.
-- E quando a IA diz "pronto, testei", ninguém confere.
+- Every repository is missing tests, and nobody knows **where**. "43% coverage" doesn't say whether *the thing you changed yesterday* is tested.
+- When an AI writes the test, it comes out in whatever style the model woke up with. Six prompts, six styles.
+- And when the AI says "done, tested", nobody checks.
 
-O redbar resolve os três: **mede** onde estão os buracos (sem IA), entrega o **padrão oficial** de cada lib pro agente escrever, e **mede de novo** pra conferir o que fechou.
+redbar does all three: it **measures** where the holes are (no AI), hands the agent each library's **official standard** to write by, and **measures again** to check what actually closed. The AI never grades its own exam.
 
-## Por que não é só uma skill do agente?
+## How it works: measure → write → re-measure
 
-- Uma skill pede pro modelo **adivinhar** o que está coberto. Cobertura é fato de execução: não está visível no código-fonte. O modelo chuta, com confiança.
-- Pergunte duas vezes, receba duas listas. O redbar dá a mesma resposta byte a byte — e só um número que repete pode segurar um gate de CI.
-- Skill é opt-in: roda quando alguém lembra. O gate roda em todo PR, inclusive pra quem não usa IA.
+Point it at your repo. It answers one question:
 
-## E TDD, SDD?
-
-- TDD e SDD valem pra código que **ainda vai nascer**, e pedem disciplina de todo mundo, todo dia.
-- O redbar age **depois**, no repositório que já existe. Não pede adesão de ninguém: mede o que ficou sem teste.
-- Não competem. TDD previne, redbar mede. O time que faz TDD perfeito não precisa do redbar — esse time não existe.
-
-## O que já existe, e onde cada um para
-
-| Ferramenta | O que faz | Onde para |
-|---|---|---|
-| Codecov / Coveralls | mostra a porcentagem | não diz **o que** testar. Termômetro, não plano |
-| Copilot / Cursor "generate tests" | escreve teste do arquivo aberto | não sabe o que já está coberto — cobertura não está visível no código-fonte |
-| Qodo e afins | IA escreve testes até a cobertura subir | a IA decide o que cobrir, e ninguém confere o que ela alega |
-| Diffblue | gera testes sem IA | só Java, caixa preta, não conversa com o teu agente |
-
-O espaço do redbar é a combinação que nenhuma faz: **medir sem IA, escrever com o agente que você já usa, e conferir medindo de novo.**
-
-## O que ele responde
-
-> **O que eu mudei que nenhum teste executa?**
+> **What did I just change that nothing tests?**
 
 ```
 language: TypeScript
@@ -70,155 +47,119 @@ runner:   jest
 base:     origin/master
 gaps:     289
 
-! [5742] e2e          src/pages/Checkout/index.tsx:124  Checkout  — 99 linhas, 28 branches
-  [ 564] integration  src/api.ts:15                     request   — 47 linhas, 11 branches
+! [5742] e2e          src/pages/Checkout/index.tsx:124  Checkout  — 99 lines, 28 branches
+  [ 564] integration  src/api.ts:15                     request   — 47 lines, 11 branches
 ```
 
-Cada linha: o símbolo, a camada de teste que falta (unit / integration / e2e) e a criticidade. O score é contagem, não opinião — `linhas descobertas × (zero cobertura ? 2 : 1) × (1 + branches)` — e qualquer número se audita com `redbar explain <símbolo>`.
-
-## O fluxo inteiro
+Each row: the symbol, the missing test's layer (unit / integration / e2e) and its criticality. The score is counting, not opinion — `uncovered lines × (zero coverage ? 2 : 1) × (1 + branches)` — and any number is auditable with `redbar explain <symbol>`.
 
 ```
-  seu repo, numa branch com trabalho
-        │
+  MEASUREMENT (zero AI)   coverage report × git diff → ranked gaps
         ▼
-  MEDIÇÃO (zero IA)     coverage report × git diff → gaps ranqueados
-        │
+  THE DOCUMENT            .redbar/TESTING.md — what to test, in what order,
+                          at which layer, to whose official docs
         ▼
-  O DOCUMENTO           .redbar/TESTING.md — o que testar, em que ordem,
-        │               em que camada, seguindo qual doc oficial
+  WRITING (the agent)     one gap at a time + the layer's standard;
+                          4 mechanical gates judge what it wrote
         ▼
-  ESCRITA (o agente)    um gap por vez + o padrão da camada;
-        │               4 portões mecânicos julgam o que ele escreveu
+  MEASUREMENT AGAIN       re-runs coverage: "closed" is measured, not claimed
         ▼
-  MEDIÇÃO DE NOVO       re-roda o coverage: "fechado" é fato medido, não alegação
-        │
-        ▼
-  OUTCOME.md            o que foi MEDIDO ≠ o que o agente ALEGA, nunca misturado
+  OUTCOME.md              what was MEASURED ≠ what the agent CLAIMS, never mixed
 ```
 
-> **[Veja o fluxo completo desenhado →](https://claude.ai/code/artifact/fac215b0-64a0-42c4-814f-eef64864049b)**
+Finding the hole is the compiler and git; writing is the agent; checking is the compiler again. A test that asserts nothing raises coverage and proves nothing — redbar **deletes it** and marks `no-assertion`. An agent that "fixes" your code to make its test pass — redbar **reverts it** and marks `touched-source`.
 
-Essa divisão é o projeto inteiro: quem acha o buraco é o compilador e o git. Quem escreve é o agente. Quem confere é o compilador de novo. Teste sem asserção sobe a cobertura e não prova nada: o redbar **apaga** e marca `no-assertion`. Agente que "conserta" teu código pra fazer o teste passar: o redbar **reverte** e marca `touched-source`.
+> **[See the whole flow as a diagram →](https://claude.ai/code/artifact/fac215b0-64a0-42c4-814f-eef64864049b)**
 
-## Histórico e progresso
+## How to use
 
-Cada `briefing` ou `execute` guarda um diretório datado em `.redbar/runs/<timestamp>/` — `.redbar/latest` sempre aponta pro mais novo. Dentro: `TESTING.md`, `REDBAR.html`, `REDBAR.pdf`, e a foto dos gaps (`gaps.json`).
-
-`redbar compare [<runA> <runB>]` abre um run contra o outro — qual buraco ficou coberto (`✓`), qual é novo, e o delta por banda de severidade. Sem argumentos, compara os dois runs mais recentes. Escreve `TREND.html` e `TREND.pdf` — o "antes e depois", pra quem não lê terminal.
-
-## Como usar
-
-Roda no teu repo, e ele faz o resto: descobre a linguagem, o runner, roda a cobertura se faltar, e te diz o que testar.
-
-**Sem instalar nada** — use via `npx`:
+No install needed — run it via `npx`:
 
 ```bash
-npx -y redbar i         # inspect — o que eu mudei que nada testa?
-npx -y redbar b         # briefing — o documento pro agente + HTML + PDF pra gerência
-npx -y redbar x         # execute — o agente escreve, o redbar julga e re-mede
-npx -y redbar why X     # explain — de onde veio o número de X, conta por conta
+npx -y redbar inspect       # what did I change that nothing tests?
+npx -y redbar briefing      # the document for your agent + HTML + PDF for management
+npx -y redbar execute       # the agent writes, redbar judges and re-measures
+npx -y redbar explain X     # where X's number came from, step by step
+npx -y redbar compare       # diff two kept runs — what closed, what's new
 ```
 
-**Ou instale global** uma vez (opcional):
+Or install it globally once:
 
 ```bash
 npm i -g redbar
+redbar inspect              # short aliases: i · b · x · why X
 ```
 
-Depois é só:
+Every command has a short alias (`i`, `b`, `x`, `why`). `--all` on any of them scans the whole repo instead of the diff.
+
+### `execute` — the authorization gate
+
+Before the agent touches anything, `execute` prints the plan — each gap, the measured why, which layer — and asks yes/no. The working tree must be clean: redbar can't tell your edits apart from the agent's.
 
 ```bash
-redbar i         # inspect
-redbar b         # briefing
-redbar x         # execute
-redbar compare   # progress — diff two kept runs
-redbar why X     # explain
+redbar execute --severity high --max 3   # only 3 high-severity gaps
+redbar execute --yes                     # CI-friendly: skip the prompt
 ```
 
-Cada atalho tem o nome completo. `--all` em qualquer um olha o repo inteiro em vez do diff.
+`--severity <band>` cuts by triage — `critical` (default), `high`, `medium`, `low`, or `all`. `--max <n>` caps the count within the band, never widens it. `--yes` skips the prompt for CI; without an interactive terminal and without `--yes`, execute stops without editing.
 
-**`execute` — a autorização**
+### History and progress
 
-Antes de o agente tocar em nada, o `execute` imprime o plano (cada gap, por quê, em que camada) e pede sim/não. `--yes` pula o prompt — pro CI. Sem terminal interativo e sem `--yes`, para sem editar nada. A working tree tem de estar limpa: redbar não consegue diferenciar edits teus de edits do agente.
+Each `briefing` or `execute` saves a timestamped directory under `.redbar/runs/<timestamp>/`, never overwritten — `TESTING.md`, `REDBAR.html`, `REDBAR.pdf`, and a snapshot of the gaps (`gaps.json`). `.redbar/latest` points to the newest.
 
-`--severity <band>` corta por triage — `critical` (padrão), `high`, `medium`, `low`, ou `all`. `--max <n>` limita dentro da banda, nunca alarga.
+`redbar compare [<runA> <runB>]` diffs two kept runs by (file, symbol), tolerant to line shift — which hole closed (`✓`), which is new, and the per-severity delta. With no arguments it compares the two most recent runs, and writes `TREND.html` / `TREND.pdf` for whoever doesn't read terminals.
+
+## MCP: plug into the agent you already use
+
+Run `redbar mcp-config` to print the exact registration line for your client. Copy the output, run it in your terminal — that command is the authorization.
 
 ```bash
-redbar x --severity high --max 3   # o agente escreve só 3 gaps de alta severidade
-redbar x --yes                      # CI-friendly: sem prompt
+redbar mcp-config claude     # prints the ready line for one client
+redbar mcp-config            # shows all clients
 ```
 
-**Contribuir?** Clone o repo — veja [CONTRIBUTING.md](CONTRIBUTING.md).
+Working from a clone before publishing? Add `--local` to emit the absolute-path form instead of `npx`.
 
-## MCP: conecte no agente que você já usa
+Once connected, ask your agent to use redbar. It calls `redbar_briefing`; redbar scans the code, ranks the gaps, and writes `.redbar/TESTING.md`; the agent writes the tests top-down, following each layer's official standard.
 
-A forma mais simples é rodar:
-
-```bash
-redbar mcp-config <cliente>    # imprime a linha pronta pra seu cliente
-redbar mcp-config              # mostra pra todos
-```
-
-redbar imprime a linha exata. Copie a saída e rode no seu terminal — isso é a autorização. Exemplos de clientes:
-
-- **Codex / Claude Code**: `codex mcp add redbar -- npx -y redbar mcp`
-- **Gemini CLI**: `gemini mcp add redbar npx -y redbar mcp` (sem `--`)
-- **Cursor**: JSON em `.cursor/mcp.json`, chave `mcpServers`: `{ "command": "npx", "args": ["-y","redbar","mcp"] }`
-- **VS Code**: JSON em `.vscode/mcp.json`, chave `servers`: `{ "command": "npx", "args": ["-y","redbar","mcp"] }`
-
-Contribuidor rodando de um clone antes da publicação? Use `redbar mcp-config <cliente> --local` pra ter a forma de caminho absoluto.
-
-**Depois de conectado, o fluxo é:**
-
-1. Peça pro agente usar o redbar → ele chama `redbar_briefing`
-2. redbar varre o código, calcula os gaps e grava `.redbar/TESTING.md` — a lista ranqueada do que testar, em que camada
-3. O agente escreve os testes de cima pra baixo, seguindo o padrão oficial de cada camada
-
-| Tool | O que faz |
+| Tool | What it does |
 |---|---|
-| `redbar_briefing` | **a principal** — o documento completo: gaps ranqueados + o padrão de cada camada. O agente usa como fonte de verdade pra escrever os testes |
-| `redbar_inspect` | a lista de gaps, medida |
-| `redbar_explain` | a auditoria de um número — a resposta pra "isso é alucinação?" |
+| `redbar_briefing` | **the main one** — the full document: ranked gaps + the standard for each layer, the agent's source of truth |
+| `redbar_inspect` | the gap list, measured |
+| `redbar_explain` | the audit of one number — the answer to "is this a hallucination?" |
 
-Os artefatos (`TESTING.md`, `gaps.json`) ficam gravados no **teu projeto**, em `.redbar/`.
+Artifacts land in **your project**, under `.redbar/`. `npx -y redbar mcp` works on any machine, no clone or link needed.
 
-redbar já está no npm: `npx -y redbar mcp` funciona em qualquer máquina, sem clone nem link.
-
-## O motor lê a cara do projeto
-
-Tudo detectado do manifest, mecanicamente, sem modelo:
-
-- **Runner** — jest ou vitest, maven ou gradle. Não assume; lê.
-- **Ferramenta e2e** — Cypress no `package.json` → padrão do Cypress; senão, Playwright.
-- **Perfil** — React/Vue → front (e2e primeiro no foco); Express/Spring/FastAPI → back (integration primeiro); Next/Nuxt → fullstack. Vira a seção "Focus" do relatório, **sem tocar no score** — o número continua contagem pura.
-
-## O gate no CI
-
-`redbar ci --max-critical 0` falha o PR quando a mudança carrega lógica com branches que nenhum teste executa — e posta a tabela como comentário no PR, editando o próprio comentário a cada push. Workflow pronto pra copiar: [.github/workflows/redbar.yml](.github/workflows/redbar.yml).
-
-## Linguagens
+## Languages
 
 - **JavaScript/TypeScript · Java · Python · Rust · PHP · Go**
-- três parsers de cobertura (lcov, Cobertura, JaCoCo) cobrem todos os ecossistemas
-- adicionar uma linguagem é **uma linha de dado** em `src/languages.ts` — sem código novo
+- three coverage parsers (lcov, Cobertura, JaCoCo) cover every ecosystem, hand-written, zero runtime dependencies
+- adding a language is **one line of data** in `src/languages.ts` — no new code
+
+## The CI gate
+
+`redbar ci --max-critical 0` fails the PR when the change carries branching logic no test executes — and posts the table as a PR comment, editing its own comment on every push. Ready-to-copy workflow: [.github/workflows/redbar.yml](.github/workflows/redbar.yml).
 
 ## Status
 
 | | |
 |---|---|
-| ✅ Motor, CLI, MCP, gate de CI | verificado em repositórios reais |
-| ✅ `execute` — re-medição, gate de severidade, autorização + plano | a IA escreve; redbar julga; um humano autoriza |
-| ✅ Histórico de runs, `compare` + TREND | o antes e depois — o progresso, pra quem não lê terminal |
-| ✅ Conventions | TS, Python, Java, Rust, PHP, Go — cada regra rastreável à doc da lib |
-| 🚧 Worker pool do `fix` | |
+| ✅ Engine, CLI, MCP, CI gate | verified on real repositories |
+| ✅ `execute` — re-measurement, severity gate, authorization + plan | AI writes; redbar judges; a human authorizes |
+| ✅ Run history, `compare` + TREND | before and after, for non-terminal readers |
+| ✅ Conventions | TS, Python, Java, Rust, PHP, Go — every rule traceable to the library's docs |
+| 🚧 `fix` worker pool | |
 
-## Origem
+## Origin
 
-Baseado no [lagune.ai](https://github.com/wellwelwel/lagune), do [Well Poku](https://github.com/wellwelwel).
+Based on [lagune.ai](https://github.com/wellwelwel/lagune), by [Well Poku](https://github.com/wellwelwel). The deep dive — every design decision and why — lives in [docs/design.md](docs/design.md).
 
-O propósito cabe numa frase: **a IA nunca dá nota na própria prova.**
+The purpose fits in one sentence: **the AI never grades its own exam.**
 
-## Licença
+## License
 
 [MIT](LICENSE) © Emerson Silva
+
+## Contributing
+
+Clone the repo — see [CONTRIBUTING.md](CONTRIBUTING.md).

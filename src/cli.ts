@@ -264,9 +264,9 @@ function runInspect(argv: string[]): void {
     writeFileSync(flags.md, renderMarkdown(inspection))
   }
 
-  // resolved against the ANALYZED repo, never the cwd — `redbar inspect /outro/repo` rodado de
-  // qualquer lugar tem que deixar o gaps.json lá, não aqui. Achado num repo real: o gaps.json de
-  // um projeto caiu dentro da pasta do redbar.
+  // resolved against the ANALYZED repo, never the cwd — `redbar inspect /other/repo` run from
+  // anywhere has to leave gaps.json there, not here. Found on a real repo: a project's gaps.json
+  // landed inside redbar's own folder.
   const outDir = resolve(root, typeof flags.out === 'string' ? flags.out : '.redbar')
   mkdirSync(outDir, { recursive: true })
   writeFileSync(join(outDir, 'gaps.json'), renderJson(inspection))
@@ -692,8 +692,9 @@ function runMcp(argv: string[]): void {
   }
 
   const tools: ToolBox = {
-    // as tools também PERSISTEM no projeto analisado. Quem instalou o MCP no projeto espera os
-    // artefatos no projeto — um texto que só existe no chat do agente morre com a conversa.
+    // the tools PERSIST into the analyzed project too. Whoever installed the MCP in the project
+    // expects the artifacts in the project — text that only lives in the agent's chat dies with the
+    // conversation.
     redbar_inspect: (args) => {
       const root = rootOf(args)
       const inspection = inspectFor(args)
@@ -707,15 +708,15 @@ function runMcp(argv: string[]): void {
       mkdirSync(join(root, '.redbar'), { recursive: true })
       writeFileSync(join(root, '.redbar', 'TESTING.md'), doc)
 
-      // o ARQUIVO leva tudo; o fio, não. Um repo real devolveu 520k chars — briefing de 969 gaps
-      // com as conventions inteiras — o que afoga o contexto de qualquer agente. Corte explícito,
-      // nunca silencioso: a nota diz o que ficou de fora e onde está o inteiro.
+      // the FILE carries everything; the wire does not. A real repo returned 520k chars — a briefing
+      // of 969 gaps with the full conventions — which drowns any agent's context. An explicit cut,
+      // never silent: the note says what was left out and where the whole thing is.
       const MAX = 60_000
       if (doc.length <= MAX) return doc
       return (
         doc.slice(0, MAX) +
-        `\n\n---\n\n[cortado pelo MCP: ${doc.length - MAX} caracteres omitidos. ` +
-        `O documento completo está em .redbar/TESTING.md — leia de lá.]`
+        `\n\n---\n\n[truncated by MCP: ${doc.length - MAX} characters omitted. ` +
+        `The full document is in .redbar/TESTING.md — read it from there.]`
       )
     },
     redbar_explain: (args) => {
@@ -840,8 +841,8 @@ function runCi(argv: string[]): number {
   return failed ? 1 : 0
 }
 
-// npm tem `npm i`, cargo tem `cargo b`: comando de todo dia merece uma letra. `why` no lugar de
-// uma letra pro explain porque `redbar why buscarPorTermos` se lê sozinho.
+// npm has `npm i`, cargo has `cargo b`: an everyday command deserves a single letter. `why` instead
+// of a letter for explain because `redbar why buscarPorTermos` reads on its own.
 const ALIASES: Record<string, string> = { i: 'inspect', b: 'briefing', x: 'execute', why: 'explain' }
 
 export function canonical(command: string): string {

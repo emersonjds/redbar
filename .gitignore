@@ -13,3 +13,6 @@ Cargo.lock
 # generated reports
 REDBAR*.html
 REDBAR*.pdf
+
+# superpowers session artifacts — dev tooling, not project docs
+.superpowers/

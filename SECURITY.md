@@ -1,23 +1,23 @@
-# Política de segurança
+# Security Policy
 
-## Superfície
+## Attack surface
 
-O redbar tem **zero dependências de runtime** — de propósito. Uma revisão de segurança do redbar é
-uma revisão do redbar, não de uma árvore de terceiros. O código que roda na sua máquina é o que está
-em `src/`, e nada mais.
+redbar has **zero runtime dependencies** — on purpose. A security review of redbar is a review of
+redbar, not of a third-party tree. The code that runs on your machine is what's in `src/`, and
+nothing more.
 
-O `redbar mcp` fala JSON-RPC no stdin/stdout e não abre porta de rede. Só o `redbar execute` chama um
-modelo, e ele se recusa a rodar numa árvore de trabalho suja.
+`redbar mcp` speaks JSON-RPC on stdin/stdout and opens no network port. Only `redbar execute` calls
+a model, and it refuses to run on a dirty working tree.
 
-## Reportando uma vulnerabilidade
+## Reporting a vulnerability
 
-Não abra uma issue pública para vulnerabilidades. Use os
-[Security Advisories privados do GitHub](https://github.com/emersonjds/redbar/security/advisories/new)
-ou contate **[@emersonjds](https://github.com/emersonjds)** diretamente.
+Do not open a public issue for a vulnerability. Use
+[GitHub private security advisories](https://github.com/emersonjds/redbar/security/advisories/new)
+or contact **[@emersonjds](https://github.com/emersonjds)** directly.
 
-Diga o que encontrou, como reproduzir, e o impacto que você enxerga. Respondemos o mais rápido que
-der, e creditamos quem reportar, se você quiser.
+Say what you found, how to reproduce it, and the impact you see. We respond fast, and we credit
+reporters who want it.
 
-## Versões suportadas
+## Supported versions
 
-O redbar ainda é pré-1.0: as correções vão para a última versão publicada.
+redbar is pre-1.0. Fixes go to the latest published version.

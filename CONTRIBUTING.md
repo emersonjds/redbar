@@ -1,45 +1,45 @@
-# Contribuindo com o redbar
+# Contributing to redbar
 
-Obrigado por olhar por baixo do capô. O redbar é pequeno de propósito — dá pra ler o núcleo numa
-sentada — e as contribuições que mais ajudam são as que o mantêm assim.
+Thanks for looking under the hood. redbar is small on purpose — you can read the core in one sitting —
+and the contributions that help most are the ones that keep it that way.
 
-## As regras que governam toda mudança
+## The rules that govern every change
 
-Estão num lugar só, e não vou repeti-las aqui pra elas não divergirem: **[AGENTS.md](AGENTS.md)**.
-Leia antes de abrir um PR. Em uma frase cada:
+They live in one place, and I won't repeat them here so they can't drift: **[AGENTS.md](AGENTS.md)**.
+Read it before you open a PR. One line each:
 
-- **Zero LLM em `src/`** — a análise é medição, não opinião de modelo.
-- **Zero dependências de runtime** — `dependencies` fica vazio; o CI quebra se aparecer uma.
-- **Adicionar linguagem, agente ou cliente MCP é uma linha de dado** — em `src/languages.ts`,
-  `src/agents.ts`, `src/clients.ts`. Um `switch (id)` fora dessas tabelas é o sinal de que o
-  design falhou.
-- **Determinismo** — mesma entrada, mesma saída, byte a byte.
-- **redbar nunca instala nada** — imprime o comando; o humano roda.
+- **Zero LLM in `src/`** — the analysis is measurement, not a model's opinion.
+- **Zero runtime dependencies** — `dependencies` stays empty; CI breaks the build if one appears.
+- **Adding a language, agent, or MCP client is one row of data** — in `src/languages.ts`,
+  `src/agents.ts`, `src/clients.ts`. A `switch (id)` outside those tables is the sign that the
+  design failed.
+- **Determinism** — same input, same output, byte for byte.
+- **redbar never installs anything** — it prints the command; the human runs it.
 
-## Rodando
+## Running
 
 ```bash
 npm install
 npm test            # vitest
 npm run typecheck   # tsc --noEmit
-npm run coverage    # escreve coverage/lcov.info
-npm run try -- .    # roda o redbar no próprio redbar
+npm run coverage    # writes coverage/lcov.info
+npm run try -- .    # run redbar on redbar itself
 ```
 
-**Teste primeiro.** Escreva o teste que falha, veja falhar, então implemente. E o padrão de teste é
-sempre a doc da própria lib, nunca invenção da casa — está em `conventions/`.
+**Test first.** Write the failing test, watch it fail, then implement. The test standard is always
+the library's own documentation, never a house invention — it's in `conventions/`.
 
-**Ache antes de escrever.** Fixture testa o que você já imaginou; repositório real testa o que você
-não imaginou. Antes de dizer que uma mudança funciona, rode o redbar num repo de verdade.
+**Find it before you write it.** A fixture tests what you already imagined; a real repository tests
+what you didn't. Before you claim a change works, run redbar on a real repo.
 
-## Commits e PRs
+## Commits and PRs
 
-- Conventional commits, minúsculos, sem ponto final. Ex.: `fix(mcp): resolve o binário pelo caminho absoluto`.
-- Micro commits: um assunto por commit.
-- **Sem rodapé de co-autor, sem emoji, sem menção a IA/agente** — o autor é você.
-- No PR: o que muda, por quê, e como você verificou (o comando e a saída).
+- Conventional commits, lowercase, no trailing period. Example: `fix(mcp): resolve the binary by absolute path`.
+- Micro commits: one subject per commit.
+- **No co-author trailer, no emoji, no mention of AI or agents** — you are the author.
+- In the PR: what changes, why, and how you verified it (the command and the output).
 
-## Achou um bug ou tem uma ideia?
+## Found a bug or have an idea?
 
-Abra uma [issue](https://github.com/emersonjds/redbar/issues) — tem template pra bug e pra ideia.
-Um repro pequeno e real vale mais que uma descrição longa.
+Open an [issue](https://github.com/emersonjds/redbar/issues) — there's a template for bugs and one for
+ideas. A small, real repro is worth more than a long description.

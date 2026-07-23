@@ -1,20 +1,20 @@
-<!-- Conventional commit no título. Ex.: fix(mcp): resolve o binário pelo caminho absoluto -->
+<!-- Conventional commit in the title. Example: fix(mcp): resolve the binary by absolute path -->
 
-## O que muda, e por quê
+## What changes, and why
 
-<!-- Uma ou duas frases. Comece pelo problema. -->
+<!-- One or two sentences. Start with the problem. -->
 
-## Como verifiquei
+## How I verified it
 
-<!-- O comando e a saída. "Rodei os testes" não conta sem o resultado. -->
+<!-- The command and the output. "Ran the tests" doesn't count without the result. -->
 
 ```
 ```
 
 ## Checklist
 
-- [ ] `npm test` e `npm run typecheck` passam
-- [ ] Teste novo cobre a mudança (falha antes, passa depois)
-- [ ] Sem dependência de runtime nova, sem modelo no caminho da análise
-- [ ] Linguagem/agente/cliente novo é uma linha de dado, não um `switch`
-- [ ] Commits limpos: conventional, sem co-autor, sem emoji, sem menção a IA
+- [ ] `npm test` and `npm run typecheck` pass
+- [ ] A new test covers the change (fails before, passes after)
+- [ ] No new runtime dependency, no model in the analysis path
+- [ ] A new language/agent/client is one row of data, not a `switch`
+- [ ] Clean commits: conventional, no co-author, no emoji, no mention of AI

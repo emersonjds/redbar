@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Vulnerabilidade de segurança
+  - name: Security vulnerability
     url: https://github.com/emersonjds/redbar/security/advisories/new
-    about: Não abra issue pública. Reporte em privado pelos Security Advisories.
+    about: Don't open a public issue. Report it privately through Security Advisories.

@@ -1,15 +1,28 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
-import { basename, join, resolve } from 'node:path'
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
+import { basename, join, relative, resolve } from 'node:path'
+import { createInterface } from 'node:readline'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { agentById, detectAgent } from './agents.js'
 import { renderBriefing, type Conventions } from './briefing.js'
 import { CLIENTS, clientById, launch, npxLaunch } from './clients.js'
+import { compareRuns, renderTrendHtml, renderTrendText } from './compare.js'
 import { detect } from './detect.js'
 import { inspect, type Inspection, type InspectOptions } from './engine.js'
 import { executeGaps, type Effects } from './execute.js'
-import { explain, matchGaps } from './explain.js'
+import { bandReason, explain, matchGaps, scoreArithmetic } from './explain.js'
+import { runDirName, summarize } from './history.js'
 import type { Language } from './languages.js'
 import { serve, type ToolArgs, type ToolBox } from './mcp.js'
 import { reconcile } from './outcome.js'
@@ -24,15 +37,16 @@ import {
   renderText,
 } from './report.js'
 import { readManifest, selectE2eTool, selectRunner } from './runner.js'
-import { ranked, severity, type Severity } from './severity.js'
+import { meetsSeverity, ranked, severity, type Severity } from './severity.js'
 import type { Gap, TestKind } from './types.js'
 
 const HELP = `redbar — test-coverage gaps in what changed, zero-LLM
 
 Usage:
   redbar briefing [path] [--all] [--base <ref>] [--out <file>]   the testing brief, for your agent
-  redbar execute [path] [--agent <id>] [--all] [--base <ref>] [--max <n>]   hand the gaps to your agent
+  redbar execute [path] [--agent <id>] [--severity <band>] [--yes] [--all] [--base <ref>] [--max <n>]   hand the gaps to your agent
   redbar explain [symbol] [--all] [--path <dir>] [--base <ref>]  where a number came from
+  redbar compare [<runA> <runB>]                                 diff two kept runs — the progress, for a boss
   redbar inspect [path] [--all] [--base <ref>] [--json] [--html <file>] [--md <file>] [--out <dir>] [--top <n>]
   redbar mcp [path]                                              MCP server on stdio
   redbar mcp-config [client] [--local]                          paste-ready MCP registration (npx; --local for a clone)
@@ -43,6 +57,10 @@ Usage:
 
   --all   scan the whole repository instead of the diff. The diff is the default: nobody takes a
           legacy repo to 80%, everybody can avoid making it worse. Use --all for the first look.
+
+  --severity <band>   which gaps execute hands the agent: critical (default), high, medium, low, or
+          all. It cuts by the triage band, not by count. --max still caps the number within it.
+  --yes   skip the confirmation and proceed (for CI). Without it, execute prints the plan and asks.
 
   shortcuts:  i = inspect · b = briefing · x = execute · why = explain
 `
@@ -132,6 +150,26 @@ function readVersion(): string {
   return pkg.version
 }
 
+// A fresh dated run dir. Runs are kept, not overwritten — so compare has a before to diff against.
+function newRunDir(root: string, now: Date): string {
+  const runDir = join(root, '.redbar', 'runs', runDirName(now))
+  mkdirSync(runDir, { recursive: true })
+  return runDir
+}
+
+// Point `.redbar/latest` at the newest run — a symlink, or a text file where the OS refuses one.
+function updateLatest(root: string, runDir: string): void {
+  const redbar = join(root, '.redbar')
+  const link = join(redbar, 'latest')
+  const target = relative(redbar, runDir)
+  rmSync(link, { force: true })
+  try {
+    symlinkSync(target, link)
+  } catch {
+    writeFileSync(link, target)
+  }
+}
+
 export type GateLimits = { maxCritical: number; maxHigh: number }
 export type GateResult = { failed: boolean; counts: Record<Severity, number> }
 
@@ -144,6 +182,56 @@ export function gateResult(
   for (const g of gaps) counts[severity(g)]++
   const failed = counts.critical > limits.maxCritical || counts.high > limits.maxHigh
   return { failed, counts }
+}
+
+const BANDS: Severity[] = ['critical', 'high', 'medium', 'low']
+
+// The band execute cuts on. Default critical — writes the least without an opt-in. A typo must not
+// silently widen the scope an agent is about to edit, so an unknown value throws.
+export function parseSeverityThreshold(flag: string | undefined): Severity | 'all' {
+  if (flag === undefined) return 'critical'
+  if (flag === 'all') return 'all'
+  if ((BANDS as string[]).includes(flag)) return flag as Severity
+  throw new Error(
+    `redbar: --severity must be one of critical, high, medium, low, all — got "${flag}"`,
+  )
+}
+
+/**
+ * What to do at the authorization gate, decided from flags alone — never from the agent.
+ *
+ *   --yes            → proceed, no prompt (CI-friendly)
+ *   interactive TTY  → ask the human y/N
+ *   neither          → stop, touching nothing (a headless run with no --yes never edits the tree)
+ *
+ * Pure so the decision is tested here; the readline prompt itself lives in runExecute.
+ */
+export function authorizationOutcome(opts: {
+  yes: boolean
+  isTTY: boolean
+}): 'proceed' | 'ask' | 'stop' {
+  if (opts.yes) return 'proceed'
+  return opts.isTTY ? 'ask' : 'stop'
+}
+
+// What the agent is about to be handed, and why each one, before it edits anything. The why is
+// measured — scoreArithmetic and bandReason, byte-identical to `redbar explain`, never model text.
+export function renderExecutePlan(gaps: Gap[]): string {
+  const lines = [`redbar will hand ${gaps.length} gap(s) to the agent, worst first:`, '']
+  for (const gap of gaps) {
+    lines.push(
+      `  ${severity(gap)} · score ${gap.score} · ${gap.symbol ?? '(no symbol)'} — ${gap.file}:${gap.lines[0]}`,
+      `    score = ${scoreArithmetic(gap)}`,
+      `    ${bandReason(gap).replace(/^ — /, '')}`,
+      `    layer: ${gap.kind}`,
+      '',
+    )
+  }
+  lines.push(
+    `Nothing above is model-authored — it is ${'`'}coverage${'`'} × ${'`'}git diff${'`'}. The agent`,
+    `writes the tests; redbar grades them.`,
+  )
+  return lines.join('\n')
 }
 
 function runInspect(argv: string[]): void {
@@ -204,19 +292,28 @@ function runBriefing(argv: string[]): void {
 
   console.log(doc)
 
-  const dir = join(root, '.redbar')
-  mkdirSync(dir, { recursive: true })
+  // A dated run, kept — not clobbered. `latest` points at it, and `compare` diffs it against the
+  // run before. --out still lets the caller pin TESTING.md wherever they want (a CI artifact path).
+  const now = new Date()
+  const runDir = newRunDir(root, now)
 
-  const mdPath = typeof flags.out === 'string' ? flags.out : join(dir, 'TESTING.md')
-  const htmlPath = join(dir, 'REDBAR.html')
+  const mdPath = typeof flags.out === 'string' ? flags.out : join(runDir, 'TESTING.md')
+  const htmlPath = join(runDir, 'REDBAR.html')
   const profile = detectProfile(readManifest(root, inspection.language))
   const html = renderHtml(inspection, repo, profile)
 
   writeFileSync(mdPath, doc)
   writeFileSync(htmlPath, html)
+  writeFileSync(join(runDir, 'gaps.json'), renderJson(inspection))
+  writeFileSync(
+    join(runDir, 'summary.json'),
+    `${JSON.stringify(summarize(inspection.base, inspection.gaps, now), null, 2)}\n`,
+  )
 
-  const pdfPath = typeof flags.pdf === 'string' ? flags.pdf : join(dir, 'REDBAR.pdf')
+  const pdfPath = typeof flags.pdf === 'string' ? flags.pdf : join(runDir, 'REDBAR.pdf')
   const printed = htmlToPdf(html, resolve(pdfPath))
+
+  updateLatest(root, runDir)
 
   process.stderr.write(`\nredbar: ${mdPath} — the brief, for your agent\n`)
   process.stderr.write(`redbar: ${htmlPath} — the table, for you\n`)
@@ -226,6 +323,7 @@ function runBriefing(argv: string[]): void {
       : `redbar: no Chrome/Chromium/Edge found, so no PDF. Open ${htmlPath} and press Cmd+P — the\n` +
           `redbar: print stylesheet is already in it, and the result is the same file.\n`,
   )
+  process.stderr.write(`redbar: kept in ${runDir} — .redbar/latest points here, compare it with \`redbar compare\`\n`)
 }
 
 /**
@@ -266,6 +364,17 @@ export function dirtyTreeError(porcelain: string): string | null {
   ].join('\n')
 }
 
+/** One y/N question on the terminal. The consent decision is a human's, never the agent's. */
+function confirm(question: string): Promise<boolean> {
+  const rl = createInterface({ input: process.stdin, output: process.stderr })
+  return new Promise((resolve) => {
+    rl.question(question, (answer) => {
+      rl.close()
+      resolve(/^y(es)?$/i.test(answer.trim()))
+    })
+  })
+}
+
 /**
  * Hand each gap to the agent, gate what it wrote, then MEASURE what changed.
  *
@@ -274,8 +383,8 @@ export function dirtyTreeError(porcelain: string): string | null {
  * the runner says whether it passes, and a fresh coverage report says whether the gap is closed.
  * The agent writes; redbar grades.
  */
-function runExecute(argv: string[]): void {
-  const { positional, flags } = parseArgs(argv, new Set(['agent', 'base', 'max']))
+async function runExecute(argv: string[]): Promise<void> {
+  const { positional, flags } = parseArgs(argv, new Set(['agent', 'base', 'max', 'severity']))
   const root = positional[0] ?? '.'
 
   const git = (args: string[]) =>
@@ -312,16 +421,52 @@ function runExecute(argv: string[]): void {
     return
   }
 
-  let max = before.gaps.length
+  // The band is the triage axis, so it is the filter — everything below the chosen band never
+  // reaches the agent. Default critical; --severity widens.
+  const threshold = parseSeverityThreshold(typeof flags.severity === 'string' ? flags.severity : undefined)
+  const inBand =
+    threshold === 'all' ? ranked(before.gaps) : ranked(before.gaps).filter((g) => meetsSeverity(g, threshold))
+
+  if (inBand.length === 0) {
+    console.log(
+      `redbar: no gaps at or above "${threshold}". ${before.gaps.length} gap(s) exist below it — ` +
+        `widen with --severity high (or --severity all), or run redbar inspect to see them.`,
+    )
+    return
+  }
+
+  // --max caps within the band; it never widens it
+  let max = inBand.length
   if (typeof flags.max === 'string') {
     max = Number(flags.max)
     if (!Number.isInteger(max) || max < 1) {
       throw new Error(`redbar: --max must be a positive integer, got "${flags.max}"`)
     }
   }
-  const gaps = ranked(before.gaps).slice(0, max)
+  const gaps = inBand.slice(0, max)
 
-  process.stderr.write(`redbar: agent ${agent.id} · ${gaps.length} gap(s), worst first\n\n`)
+  // Consent before the agent edits the tree — print the plan and its measured why, then ask.
+  process.stderr.write(`redbar: agent ${agent.id}\n\n`)
+  process.stderr.write(`${renderExecutePlan(gaps)}\n\n`)
+
+  const decision = authorizationOutcome({
+    yes: flags.yes === true,
+    isTTY: Boolean(process.stdout.isTTY),
+  })
+  if (decision === 'stop') {
+    process.stderr.write(
+      `redbar: not a terminal and no --yes — stopping without touching anything. ` +
+        `Re-run with --yes to let the agent proceed.\n`,
+    )
+    return
+  }
+  if (
+    decision === 'ask' &&
+    !(await confirm(`Proceed — hand these ${gaps.length} gap(s) to ${agent.id}? [y/N] `))
+  ) {
+    process.stderr.write('redbar: aborted. Nothing was touched.\n')
+    return
+  }
 
   const read = (file: string): string | null => {
     const p = join(root, file)
@@ -404,16 +549,24 @@ function runExecute(argv: string[]): void {
   const md = renderOutcomeMarkdown(after, outcomes, agent.id)
   const html = renderOutcomeHtml(after, outcomes, agent.id, repo)
 
-  const dir = join(root, '.redbar')
-  mkdirSync(dir, { recursive: true })
-  writeFileSync(join(dir, 'OUTCOME.md'), md)
-  writeFileSync(join(dir, 'OUTCOME.html'), html)
-  const printed = htmlToPdf(html, resolve(join(dir, 'OUTCOME.pdf')))
+  // Its own kept run: the OUTCOME, plus the POST-FIX gap snapshot. That snapshot is what makes the
+  // work visible over time — `compare` reads it and reports which gaps the agent actually closed.
+  const now = new Date()
+  const runDir = newRunDir(root, now)
+  writeFileSync(join(runDir, 'OUTCOME.md'), md)
+  writeFileSync(join(runDir, 'OUTCOME.html'), html)
+  writeFileSync(join(runDir, 'gaps.json'), renderJson(after))
+  writeFileSync(
+    join(runDir, 'summary.json'),
+    `${JSON.stringify(summarize(after.base, after.gaps, now), null, 2)}\n`,
+  )
+  const printed = htmlToPdf(html, resolve(join(runDir, 'OUTCOME.pdf')))
+  updateLatest(root, runDir)
 
   console.log(md)
-  process.stderr.write(`\nredbar: ${join(dir, 'OUTCOME.md')} — what happened, for the repo\n`)
-  process.stderr.write(`redbar: ${join(dir, 'OUTCOME.html')} — the same, for you\n`)
-  if (printed) process.stderr.write(`redbar: ${join(dir, 'OUTCOME.pdf')} — the same, for whoever asks\n`)
+  process.stderr.write(`\nredbar: ${join(runDir, 'OUTCOME.md')} — what happened, for the repo\n`)
+  process.stderr.write(`redbar: ${join(runDir, 'OUTCOME.html')} — the same, for you\n`)
+  if (printed) process.stderr.write(`redbar: ${join(runDir, 'OUTCOME.pdf')} — the same, for whoever asks\n`)
 }
 
 /**
@@ -457,6 +610,63 @@ function runExplain(argv: string[]): void {
   }
 
   console.log(matched.map((gap) => explain(inspection, gap)).join('\n\n───\n\n'))
+}
+
+/** Match a run folder by exact name or by date prefix (`2026-07-22` → that day's latest run). Pure. */
+export function resolveRun(runs: string[], arg: string): string {
+  if (runs.includes(arg)) return arg
+  const matches = runs.filter((name) => name.startsWith(arg))
+  if (matches.length === 0) {
+    throw new Error(`redbar: no run matches "${arg}". Runs: ${runs.join(', ') || '(none)'}`)
+  }
+  return matches[matches.length - 1]! // the latest run on that day
+}
+
+/**
+ * `redbar compare` — the progress report. A pure set diff of two kept runs: what got covered, what
+ * is new, the per-band delta. No model, no clock — it reads two gaps.json and subtracts, which is
+ * the property that lets a developer put the trend in front of a boss.
+ */
+function runCompare(argv: string[]): void {
+  const { positional } = parseArgs(argv, new Set())
+  const root = '.'
+  const runsDir = join(root, '.redbar', 'runs')
+
+  if (!existsSync(runsDir)) {
+    throw new Error('redbar: no runs yet. Run `redbar briefing` first — compare diffs two kept runs.')
+  }
+  const runs = readdirSync(runsDir)
+    .filter((name) => statSync(join(runsDir, name)).isDirectory())
+    .sort()
+
+  let from: string
+  let to: string
+  if (positional.length >= 2) {
+    from = resolveRun(runs, positional[0]!)
+    to = resolveRun(runs, positional[1]!)
+  } else {
+    if (runs.length < 2) {
+      throw new Error('redbar: need two runs to compare — run redbar briefing again after some work.')
+    }
+    from = runs[runs.length - 2]!
+    to = runs[runs.length - 1]!
+  }
+
+  const gapsOf = (run: string): Gap[] => {
+    const file = join(runsDir, run, 'gaps.json')
+    if (!existsSync(file)) throw new Error(`redbar: ${run} has no gaps.json — nothing to compare.`)
+    return (JSON.parse(readFileSync(file, 'utf8')) as { gaps: Gap[] }).gaps
+  }
+
+  const diff = compareRuns(gapsOf(from), gapsOf(to))
+  console.log(renderTrendText(diff, from, to))
+
+  const html = renderTrendHtml(diff, from, to)
+  writeFileSync(join(runsDir, '..', 'TREND.html'), html)
+  const printed = htmlToPdf(html, resolve(join(runsDir, '..', 'TREND.pdf')))
+  if (printed) {
+    process.stderr.write(`\nredbar: ${join(root, '.redbar', 'TREND.pdf')} — the trend, for whoever asks\n`)
+  }
 }
 
 /** The MCP server. The engine, exposed to whatever agent the developer already uses. */
@@ -638,7 +848,7 @@ export function canonical(command: string): string {
   return ALIASES[command] ?? command
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const argv = process.argv.slice(2)
   const command = argv[0] && canonical(argv[0])
 
@@ -657,10 +867,13 @@ function main(): void {
         runBriefing(argv.slice(1))
         break
       case 'execute':
-        runExecute(argv.slice(1))
+        await runExecute(argv.slice(1))
         break
       case 'explain':
         runExplain(argv.slice(1))
+        break
+      case 'compare':
+        runCompare(argv.slice(1))
         break
       case 'mcp':
         runMcp(argv.slice(1))

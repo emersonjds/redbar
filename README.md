@@ -7,8 +7,6 @@
 
 </div>
 
-# 🟥 [redbar](https://github.com/emersonjds/redbar)
-
 [![release](https://img.shields.io/github/v/release/emersonjds/redbar?label=release&color=0A7EA4&sort=semver)](https://github.com/emersonjds/redbar/releases/latest)
 [![ci](https://github.com/emersonjds/redbar/actions/workflows/ci.yml/badge.svg)](https://github.com/emersonjds/redbar/actions/workflows/ci.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)

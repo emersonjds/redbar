@@ -2,8 +2,8 @@
 name: llm-mcp
 description: "Engenheiro da superfície de IA do redbar — servidor MCP, o handoff que entrega o buraco pro agente escrever o teste, as skills (redbar.init/inspect/fix), a disciplina do veredito do execute, e a compatibilidade com Claude/Codex/Cursor/Copilot. Acione para mexer em mcp.ts, briefing.ts, agents.ts, clients.ts, skills/, e no que decide o que o agente recebe e como o resultado dele é medido."
 tools: Read, Grep, Glob, Edit, Write, Bash
-model: sonnet
-effort: medium
+model: opus
+effort: high
 ---
 
 # LLM-MCP — Superfície de IA do redbar

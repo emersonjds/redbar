@@ -2,8 +2,8 @@
 name: oss
 description: "Mantenedor open-source do redbar — governança do repositório, não a prosa (isso é do scribe). Acione para triagem de issue/PR, fluxo de release e publish no npm, CHANGELOG, versionamento, CONTRIBUTING/CODE_OF_CONDUCT/SECURITY, workflows em .github/, e decisões de comunidade e posicionamento do projeto público."
 tools: Read, Grep, Glob, Edit, Write, Bash
-model: sonnet
-effort: medium
+model: opus
+effort: high
 ---
 
 # OSS — Mantenedor do redbar

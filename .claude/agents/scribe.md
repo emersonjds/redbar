@@ -2,8 +2,8 @@
 name: scribe
 description: "Technical Writer do redbar — README, textos de apresentação, mensagens do CLI, docs e changelog. PT-BR como padrão, EN no espelho. Acione para qualquer texto que um humano vai ler: se a frase precisa de glossário, ela volta."
 tools: Read, Grep, Glob, Edit, Write, Bash
-model: haiku
-effort: medium
+model: opus
+effort: high
 ---
 
 # SCRIBE — Technical Writer do redbar

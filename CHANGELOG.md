@@ -10,6 +10,38 @@ While the major version is `0`, the public surface — the CLI flags, the `gaps.
 
 ## [Unreleased]
 
+## [0.1.2] — 2026-07-22
+
+A correção de descoberta do servidor MCP. Depois de `npm link`, o Codex (e os outros clientes) não
+achavam o `redbar`: o host do MCP dá spawn no servidor com o PATH sanitizado, sem o bin global do npm,
+então `command: "redbar"` pelado nunca resolvia. Encontrado no #13, rodando o redbar num setup real.
+
+### Fixed
+
+- **O servidor MCP não era descoberto após `npm link`** (#13). A causa é o PATH sanitizado do host —
+  o bin global do npm não está no ambiente do spawn, então o comando `redbar` pelado não resolve. O
+  registro agora usa launch **portátil por `npx`** (`npx -y redbar mcp`), que não depende de link nem
+  de caminho absoluto e funciona em qualquer máquina.
+
+### Added
+
+- **`redbar mcp-config [cliente]`** — imprime o registro do servidor MCP no formato exato de cada
+  cliente. Novo registry `src/clients.ts`, uma linha de dado por cliente (mesma lei de `languages.ts`),
+  cobrindo Claude, Codex, Cursor, Copilot, Gemini e VS Code, cada um com sua sintaxe verificada. O
+  comando imprime; o dono roda.
+- **`--local`** no `mcp-config`, para quem trabalha a partir do clone: emite o launch com caminho
+  absoluto (`process.execPath` + `dist/cli.js`) em vez do `npx`.
+- **Time de agents especialistas** (`core`, `arquiteto`, `qa`, `llm-mcp`, `oss`, `scribe`) e o
+  roteamento entre eles, documentados no `AGENTS.md` — a fonte única para Claude Code, Codex, Cursor
+  e Copilot.
+
+### Changed
+
+- **Instalação por `npx redbar`**, sem clone para o usuário final — o README passa a apresentar o
+  `mcp-config` no lugar do registro manual com `redbar` pelado.
+- `prepublishOnly` agora roda `typecheck` e os testes antes de empacotar, então uma release quebrada
+  não sai.
+
 ## [0.1.1] — 2026-07-13
 
 The engine, the CLI, and the agent skills. Verified against a production React Native app and
@@ -72,5 +104,6 @@ hand-written fixture** — which is the most useful thing we learned.
 - JaCoCo source roots were unreachable from `inspect()`, so any Kotlin or multi-module Maven repo
   returned **zero gaps with no error**.
 
-[Unreleased]: https://github.com/emersonjds/redbar/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/emersonjds/redbar/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/emersonjds/redbar/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/emersonjds/redbar/releases/tag/v0.1.1

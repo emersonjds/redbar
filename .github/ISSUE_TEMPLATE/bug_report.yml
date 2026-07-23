@@ -1,23 +1,23 @@
 name: Bug
-description: Algo no redbar não faz o que devia
+description: Something in redbar doesn't do what it should
 labels: [bug]
 body:
   - type: textarea
     id: what
     attributes:
-      label: O que aconteceu
-      description: O que você esperava, e o que veio no lugar.
+      label: What happened
+      description: What you expected, and what came instead.
     validations:
       required: true
   - type: textarea
     id: repro
     attributes:
-      label: Como reproduzir
+      label: How to reproduce
       description: |
-        O comando exato e, se der, um repo real ou fixture pequeno. Fixture testa o que você já
-        imaginou; repo real testa o que ninguém imaginou — é onde os bugs do redbar aparecem.
+        The exact command and, if you can, a real repo or a small fixture. A fixture tests what you
+        already imagined; a real repo tests what nobody imagined — that's where redbar's bugs show up.
       placeholder: |
-        1. cd /meu/repo
+        1. cd /my/repo
         2. redbar i
         3. ...
     validations:
@@ -25,13 +25,13 @@ body:
   - type: textarea
     id: env
     attributes:
-      label: Ambiente
-      description: Saída de `redbar --version`, `node --version`, e o SO.
+      label: Environment
+      description: Output of `redbar --version`, `node --version`, and the OS.
     validations:
       required: true
   - type: textarea
     id: output
     attributes:
-      label: Saída
-      description: Cole o erro ou o relatório inteiro. Ele é determinístico — a saída bruta ajuda.
+      label: Output
+      description: Paste the error or the whole report. It's deterministic — the raw output helps.
       render: shell

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { compareRuns } from '../src/compare.js'
+import { compareRuns, renderTrendText } from '../src/compare.js'
 import type { Gap } from '../src/types.js'
 
 const gap = (overrides: Partial<Gap>): Gap => ({
@@ -46,5 +46,17 @@ describe('compareRuns', () => {
     ]
     const b = [gap({ file: 'src/b.ts', symbol: 'B', fullyUncovered: true, branches: 6 })] // one critical closed
     expect(compareRuns(a, b).deltaByBand.critical).toBe(-1)
+  })
+})
+
+describe('renderTrendText', () => {
+  it('shows the closed/new counts and the closed symbol names', () => {
+    const a = [gap({ file: 'src/a.ts', symbol: 'Checkout', fullyUncovered: true, branches: 6 })]
+    const b: Gap[] = []
+    const text = renderTrendText(compareRuns(a, b), '2026-07-22', '2026-07-29')
+    expect(text).toContain('closed: 1')
+    expect(text).toContain('new: 0')
+    expect(text).toContain('Checkout')
+    expect(text).toContain('critical -1 ✓') // progress, signed
   })
 })

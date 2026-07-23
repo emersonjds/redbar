@@ -4,8 +4,10 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  readdirSync,
   realpathSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs'
@@ -15,6 +17,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { agentById, detectAgent } from './agents.js'
 import { renderBriefing, type Conventions } from './briefing.js'
 import { CLIENTS, clientById, launch, npxLaunch } from './clients.js'
+import { compareRuns, renderTrendHtml, renderTrendText } from './compare.js'
 import { detect } from './detect.js'
 import { inspect, type Inspection, type InspectOptions } from './engine.js'
 import { executeGaps, type Effects } from './execute.js'
@@ -43,6 +46,7 @@ Usage:
   redbar briefing [path] [--all] [--base <ref>] [--out <file>]   the testing brief, for your agent
   redbar execute [path] [--agent <id>] [--severity <band>] [--yes] [--all] [--base <ref>] [--max <n>]   hand the gaps to your agent
   redbar explain [symbol] [--all] [--path <dir>] [--base <ref>]  where a number came from
+  redbar compare [<runA> <runB>]                                 diff two kept runs — the progress, for a boss
   redbar inspect [path] [--all] [--base <ref>] [--json] [--html <file>] [--md <file>] [--out <dir>] [--top <n>]
   redbar mcp [path]                                              MCP server on stdio
   redbar mcp-config [client] [--local]                          paste-ready MCP registration (npx; --local for a clone)
@@ -623,6 +627,63 @@ function runExplain(argv: string[]): void {
   console.log(matched.map((gap) => explain(inspection, gap)).join('\n\n───\n\n'))
 }
 
+/** Match a run folder by exact name or by date prefix (`2026-07-22` → that day's latest run). Pure. */
+export function resolveRun(runs: string[], arg: string): string {
+  if (runs.includes(arg)) return arg
+  const matches = runs.filter((name) => name.startsWith(arg))
+  if (matches.length === 0) {
+    throw new Error(`redbar: no run matches "${arg}". Runs: ${runs.join(', ') || '(none)'}`)
+  }
+  return matches[matches.length - 1]! // the latest run on that day
+}
+
+/**
+ * `redbar compare` — the progress report. A pure set diff of two kept runs: what got covered, what
+ * is new, the per-band delta. No model, no clock — it reads two gaps.json and subtracts, which is
+ * the property that lets a developer put the trend in front of a boss.
+ */
+function runCompare(argv: string[]): void {
+  const { positional } = parseArgs(argv, new Set())
+  const root = '.'
+  const runsDir = join(root, '.redbar', 'runs')
+
+  if (!existsSync(runsDir)) {
+    throw new Error('redbar: no runs yet. Run `redbar briefing` first — compare diffs two kept runs.')
+  }
+  const runs = readdirSync(runsDir)
+    .filter((name) => statSync(join(runsDir, name)).isDirectory())
+    .sort()
+
+  let from: string
+  let to: string
+  if (positional.length >= 2) {
+    from = resolveRun(runs, positional[0]!)
+    to = resolveRun(runs, positional[1]!)
+  } else {
+    if (runs.length < 2) {
+      throw new Error('redbar: need two runs to compare — run redbar briefing again after some work.')
+    }
+    from = runs[runs.length - 2]!
+    to = runs[runs.length - 1]!
+  }
+
+  const gapsOf = (run: string): Gap[] => {
+    const file = join(runsDir, run, 'gaps.json')
+    if (!existsSync(file)) throw new Error(`redbar: ${run} has no gaps.json — nothing to compare.`)
+    return (JSON.parse(readFileSync(file, 'utf8')) as { gaps: Gap[] }).gaps
+  }
+
+  const diff = compareRuns(gapsOf(from), gapsOf(to))
+  console.log(renderTrendText(diff, from, to))
+
+  const html = renderTrendHtml(diff, from, to)
+  writeFileSync(join(runsDir, '..', 'TREND.html'), html)
+  const printed = htmlToPdf(html, resolve(join(runsDir, '..', 'TREND.pdf')))
+  if (printed) {
+    process.stderr.write(`\nredbar: ${join(root, '.redbar', 'TREND.pdf')} — the trend, for whoever asks\n`)
+  }
+}
+
 /** The MCP server. The engine, exposed to whatever agent the developer already uses. */
 function runMcp(argv: string[]): void {
   const { positional } = parseArgs(argv, new Set())
@@ -825,6 +886,9 @@ async function main(): Promise<void> {
         break
       case 'explain':
         runExplain(argv.slice(1))
+        break
+      case 'compare':
+        runCompare(argv.slice(1))
         break
       case 'mcp':
         runMcp(argv.slice(1))

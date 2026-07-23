@@ -6,6 +6,7 @@ import {
   gateResult,
   parseSeverityThreshold,
   renderExecutePlan,
+  resolveRun,
 } from '../src/cli.js'
 import { bandReason, scoreArithmetic } from '../src/explain.js'
 
@@ -133,6 +134,22 @@ describe('authorizationOutcome', () => {
 
   it('stops — touches nothing — when there is no --yes and no TTY to ask', () => {
     expect(authorizationOutcome({ yes: false, isTTY: false })).toBe('stop')
+  })
+})
+
+describe('resolveRun', () => {
+  const runs = ['2026-07-22T09-10-00', '2026-07-22T21-55-30', '2026-07-29T09-10-00']
+
+  it('matches an exact run id', () => {
+    expect(resolveRun(runs, '2026-07-29T09-10-00')).toBe('2026-07-29T09-10-00')
+  })
+
+  it('matches a date prefix, taking that day\'s latest run', () => {
+    expect(resolveRun(runs, '2026-07-22')).toBe('2026-07-22T21-55-30')
+  })
+
+  it('throws when nothing matches', () => {
+    expect(() => resolveRun(runs, '2020-01-01')).toThrow(/no run matches/i)
   })
 })
 

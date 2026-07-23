@@ -38,3 +38,62 @@ export function compareRuns(a: Gap[], b: Gap[]): RunDiff {
 
   return { closed, added, deltaByBand }
 }
+
+const BANDS: Severity[] = ['critical', 'high', 'medium', 'low']
+
+/** The delta with its sign, human-first: `-2` reads as `-2 ✓` (progress), `+1` as `+1`. */
+const signed = (n: number): string => (n < 0 ? `${n} ✓` : n > 0 ? `+${n}` : '0')
+
+/** The terminal summary of a comparison. Pure — the numbers are a set diff, the same twice. */
+export function renderTrendText(diff: RunDiff, from: string, to: string): string {
+  const out = [
+    `redbar compare — ${from} → ${to}`,
+    ``,
+    `  closed: ${diff.closed.length}   new: ${diff.added.length}`,
+    `  ${BANDS.map((b) => `${b} ${signed(diff.deltaByBand[b])}`).join('   ')}`,
+    ``,
+  ]
+  if (diff.closed.length) {
+    out.push(`  closed:`)
+    for (const g of diff.closed) out.push(`    ${g.symbol ?? '(no symbol)'} — ${g.file}`)
+    out.push(``)
+  }
+  if (diff.added.length) {
+    out.push(`  new:`)
+    for (const g of diff.added) out.push(`    ${g.symbol ?? '(no symbol)'} — ${g.file}`)
+    out.push(``)
+  }
+  return out.join('\n')
+}
+
+const esc = (s: string): string =>
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
+/** The TREND page — the one management gets. Same numbers as the text, self-contained, printable. */
+export function renderTrendHtml(diff: RunDiff, from: string, to: string): string {
+  const row = (g: Gap): string => `<li><code>${esc(g.symbol ?? '(no symbol)')}</code> — ${esc(g.file)}</li>`
+  const band = (b: Severity): string =>
+    `<span class="b ${b}">${b} ${esc(signed(diff.deltaByBand[b]))}</span>`
+  return `<!doctype html><meta charset="utf-8"><title>redbar trend</title>
+<style>
+  body{font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#111;max-width:820px;margin:40px auto;padding:0 20px}
+  h1{font-size:20px}h1 b{color:#c0392b}.sub{color:#666}
+  .cards{display:flex;gap:12px;margin:20px 0}
+  .card{flex:1;border:1px solid #eee;border-radius:8px;padding:14px}
+  .card .n{font-size:28px;font-weight:700}
+  .b{display:inline-block;margin-right:10px;font-variant-numeric:tabular-nums}
+  .critical{color:#c0392b}.high{color:#e67e22}.medium{color:#b7950b}.low{color:#7f8c8d}
+  h2{font-size:15px;margin-top:24px}code{background:#f6f6f6;padding:1px 4px;border-radius:3px}
+  ul{padding-left:18px}li{margin:2px 0}
+</style>
+<h1>red<b>bar</b> — trend</h1>
+<p class="sub">${esc(from)} → ${esc(to)}. The same numbers as <code>redbar compare</code>: a set diff of two runs, zero-LLM.</p>
+<div class="cards">
+  <div class="card"><div class="n">${diff.closed.length}</div>closed</div>
+  <div class="card"><div class="n">${diff.added.length}</div>new</div>
+</div>
+<p>${BANDS.map(band).join('')}</p>
+${diff.closed.length ? `<h2>Closed</h2><ul>${diff.closed.map(row).join('')}</ul>` : ''}
+${diff.added.length ? `<h2>New</h2><ul>${diff.added.map(row).join('')}</ul>` : ''}
+`
+}

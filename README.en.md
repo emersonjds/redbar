@@ -101,6 +101,12 @@ Each row: the symbol, the missing test's layer (unit / integration / e2e) and it
 
 The split is the whole project: finding the hole is the compiler and git; writing is the agent; checking is the compiler again. A test that asserts nothing raises coverage and proves nothing — redbar **deletes it** and marks `no-assertion`. An agent that "fixes" your code to make its test pass — redbar **reverts it** and marks `touched-source`.
 
+## History and progress
+
+Each `briefing` or `execute` saves a timestamped directory in `.redbar/runs/<timestamp>/` — `.redbar/latest` always points to the newest. Inside: `TESTING.md`, `REDBAR.html`, `REDBAR.pdf`, and a snapshot of the gaps (`gaps.json`).
+
+`redbar compare [<runA> <runB>]` diffs one run against another — which hole is now covered (`✓`), which is new, and the per-band delta. Without arguments, it compares the two most recent runs. Writes `TREND.html` and `TREND.pdf` — the "before and after", for whoever doesn't read terminals.
+
 ## How to use
 
 Run it in your repo, and it does the rest: detects the language and the runner, generates coverage if it's missing, and tells you what to test.
@@ -126,10 +132,22 @@ Then it's just:
 redbar i         # inspect
 redbar b         # briefing
 redbar x         # execute
+redbar compare   # progress — diff two kept runs
 redbar why X     # explain
 ```
 
-Every shortcut has a full name (`inspect`, `briefing`, `execute`, `explain`), and `--all` on any of them scans the whole repo instead of the diff.
+Every shortcut has a full name. `--all` on any of them scans the whole repo instead of the diff.
+
+**`execute` — the authorization gate**
+
+Before the agent touches anything, `execute` prints the plan (each gap, why, which layer) and asks yes/no. `--yes` skips the prompt — for CI. Without an interactive terminal and without `--yes`, it stops without editing. The working tree must be clean: redbar cannot tell your edits apart from the agent's.
+
+`--severity <band>` cuts by triage — `critical` (default), `high`, `medium`, `low`, or `all`. `--max <n>` caps the count within the band, never widens it.
+
+```bash
+redbar x --severity high --max 3   # the agent writes only 3 high-severity gaps
+redbar x --yes                      # CI-friendly: no prompt
+```
 
 **Contributing?** Clone the repo — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
@@ -165,7 +183,7 @@ Contributing from a clone before publication? Use `redbar mcp-config <client> --
 
 The artifacts (`TESTING.md`, `gaps.json`) are written into **your project**, under `.redbar/`.
 
-When redbar hits npm, just `npx -y redbar mcp` on any machine — works without clone or link.
+redbar is already on npm: `npx -y redbar mcp` works on any machine, no clone or link needed.
 
 ## The engine reads the project's shape
 
@@ -189,7 +207,9 @@ All detected from the manifest, mechanically, no model:
 
 | | |
 |---|---|
-| ✅ Engine, CLI, MCP, CI gate, `execute` with re-measurement | verified on real repositories |
+| ✅ Engine, CLI, MCP, CI gate | verified on real repositories |
+| ✅ `execute` — re-measurement, severity gate, authorization + plan | AI writes; redbar judges; a human authorizes |
+| ✅ Run history, `compare` + TREND | before and after — the progress, for non-terminal readers |
 | ✅ Conventions | TS, Python, Java, Rust, PHP, Go — every rule traceable to the library's docs |
 | 🚧 `fix` worker pool | |
 

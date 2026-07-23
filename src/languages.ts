@@ -327,8 +327,10 @@ export const LANGUAGES: Language[] = [
     // Both showed up as "gaps" on a real repo, which is noise in a report meant to be a to-do list.
     // public/ carries SERVED assets (MSW drops its generated mockServiceWorker.js there) — found
     // ranking as a real repo's #3 gap. Never product code.
+    // mocks/ (MSW request handlers) and *.gen.ts (a generated TanStack routeTree) both ranked as
+    // gaps on a real admin front-end — the same class of noise: test scaffolding and generated code.
     testFilePattern:
-      /(^|\/)(__tests__|__mocks__|e2e|public)\/|\.(test|spec)\.[jt]sx?$|\.d\.ts$|(^|\/)[\w.-]*\.(config|setup|resolver)\.[jt]sx?$|(^|\/)(jest|vitest|metro|babel|eslint)\.[\w.]*[jt]sx?$/,
+      /(^|\/)(__tests__|__mocks__|mocks|e2e|public)\/|\.(test|spec)\.[jt]sx?$|\.d\.ts$|\.gen\.[jt]sx?$|(^|\/)[\w.-]*\.(config|setup|resolver)\.[jt]sx?$|(^|\/)(jest|vitest|metro|babel|eslint)\.[\w.]*[jt]sx?$/,
     // A top-level declaration is one at column 0 — `export` is NOT required. Real React code
     // writes `const Button = (...)` and exports it at the bottom with `export default Button`;
     // demanding the keyword here left every component in a real app named "(no symbol)".

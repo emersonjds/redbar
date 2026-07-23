@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { canonical, dirtyTreeError, gateResult } from '../src/cli.js'
+import {
+  authorizationOutcome,
+  canonical,
+  dirtyTreeError,
+  gateResult,
+  parseSeverityThreshold,
+} from '../src/cli.js'
 
 describe('canonical', () => {
   it('expande os atalhos de uma letra, estilo cargo/npm', () => {
@@ -94,5 +100,36 @@ describe('dirtyTreeError', () => {
     expect(message).not.toBeNull()
     expect(message).toContain('new.ts')
     expect(message).not.toContain('old.ts')
+  })
+})
+
+describe('parseSeverityThreshold', () => {
+  it('defaults to critical — execute writes the least without an opt-in', () => {
+    expect(parseSeverityThreshold(undefined)).toBe('critical')
+  })
+
+  it('takes any band name, and "all" for the escape hatch', () => {
+    expect(parseSeverityThreshold('high')).toBe('high')
+    expect(parseSeverityThreshold('low')).toBe('low')
+    expect(parseSeverityThreshold('all')).toBe('all')
+  })
+
+  it('rejects a value that is not a band', () => {
+    expect(() => parseSeverityThreshold('urgent')).toThrow(/severity/i)
+  })
+})
+
+describe('authorizationOutcome', () => {
+  it('proceeds without asking when --yes is passed', () => {
+    expect(authorizationOutcome({ yes: true, isTTY: false })).toBe('proceed')
+    expect(authorizationOutcome({ yes: true, isTTY: true })).toBe('proceed')
+  })
+
+  it('asks on an interactive terminal', () => {
+    expect(authorizationOutcome({ yes: false, isTTY: true })).toBe('ask')
+  })
+
+  it('stops — touches nothing — when there is no --yes and no TTY to ask', () => {
+    expect(authorizationOutcome({ yes: false, isTTY: false })).toBe('stop')
   })
 })

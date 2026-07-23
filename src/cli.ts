@@ -146,6 +146,40 @@ export function gateResult(
   return { failed, counts }
 }
 
+const BANDS: Severity[] = ['critical', 'high', 'medium', 'low']
+
+/**
+ * The band `execute` cuts on. Default is `critical` — the tool writes the least without an opt-in,
+ * the same conservative default the `redbar.fix` skill already had. `all` is the explicit escape
+ * hatch for "hand the agent everything". Anything else is a typo, and a typo must not silently
+ * widen the scope an agent is about to edit.
+ */
+export function parseSeverityThreshold(flag: string | undefined): Severity | 'all' {
+  if (flag === undefined) return 'critical'
+  if (flag === 'all') return 'all'
+  if ((BANDS as string[]).includes(flag)) return flag as Severity
+  throw new Error(
+    `redbar: --severity must be one of critical, high, medium, low, all — got "${flag}"`,
+  )
+}
+
+/**
+ * What to do at the authorization gate, decided from flags alone — never from the agent.
+ *
+ *   --yes            → proceed, no prompt (CI-friendly)
+ *   interactive TTY  → ask the human y/N
+ *   neither          → stop, touching nothing (a headless run with no --yes never edits the tree)
+ *
+ * Pure so the decision is tested here; the readline prompt itself lives in runExecute.
+ */
+export function authorizationOutcome(opts: {
+  yes: boolean
+  isTTY: boolean
+}): 'proceed' | 'ask' | 'stop' {
+  if (opts.yes) return 'proceed'
+  return opts.isTTY ? 'ask' : 'stop'
+}
+
 function runInspect(argv: string[]): void {
   const { positional, flags } = parseArgs(argv, new Set(['base', 'html', 'md', 'out', 'top']))
   const root = positional[0] ?? '.'

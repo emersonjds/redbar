@@ -38,6 +38,18 @@ export function severity(gap: Pick<Gap, 'fullyUncovered' | 'branches'>): Severit
 const RANK: Record<Severity, number> = { critical: 0, high: 1, medium: 2, low: 3 }
 
 /**
+ * Does this gap sit at or above the threshold band? The band is the triage axis (`severity`), so
+ * it is also the axis `execute` cuts on — a filter, not a count. `meetsSeverity(g, 'high')` keeps
+ * critical and high, drops medium and low. Lower RANK is worse, so at-or-above is `<=`.
+ */
+export function meetsSeverity(
+  gap: Pick<Gap, 'fullyUncovered' | 'branches'>,
+  threshold: Severity,
+): boolean {
+  return RANK[severity(gap)] <= RANK[threshold]
+}
+
+/**
  * Triage order: worst first. Every audience sorts the same way — the terminal, the PR comment,
  * the HTML and the agent's briefing. Two orders that disagree would be two answers to "what do I
  * do first", and the agent works top to bottom.

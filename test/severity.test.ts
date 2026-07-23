@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { severity } from '../src/severity.js'
+import { meetsSeverity, severity } from '../src/severity.js'
 
 describe('severity', () => {
   it('untested branching logic is critical — every branch is a path nothing has ever run', () => {
@@ -23,6 +23,18 @@ describe('severity', () => {
   it('partly covered and simple is low', () => {
     expect(severity({ fullyUncovered: false, branches: 4 })).toBe('low')
     expect(severity({ fullyUncovered: false, branches: 0 })).toBe('low')
+  })
+
+  // the band is the triage axis, so it is also the filter execute cuts on. at-or-above, worst-first.
+  it('meetsSeverity keeps a gap at or above the threshold band', () => {
+    const critical = { fullyUncovered: true, branches: 6 } // critical
+    const high = { fullyUncovered: true, branches: 2 } // high
+    const low = { fullyUncovered: false, branches: 0 } // low
+
+    expect(meetsSeverity(critical, 'high')).toBe(true) // above the threshold
+    expect(meetsSeverity(high, 'high')).toBe(true) // at the threshold
+    expect(meetsSeverity(low, 'critical')).toBe(false) // below it
+    expect(meetsSeverity(low, 'low')).toBe(true) // everything meets low
   })
 
   // the band exists to be triaged: a covered symbol must never outrank an untested one at the

@@ -1,6 +1,6 @@
 {
   "name": "redbar",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Spec-driven test agents for every layer. Math finds what you changed that nothing tests; agents write it — unit, integration, e2e — following your team's spec, not the model's.",
   "type": "module",
   "license": "MIT",

@@ -10,37 +10,76 @@ While the major version is `0`, the public surface — the CLI flags, the `gaps.
 
 ## [Unreleased]
 
-## [0.1.2] — 2026-07-22
-
-A correção de descoberta do servidor MCP. Depois de `npm link`, o Codex (e os outros clientes) não
-achavam o `redbar`: o host do MCP dá spawn no servidor com o PATH sanitizado, sem o bin global do npm,
-então `command: "redbar"` pelado nunca resolvia. Encontrado no #13, rodando o redbar num setup real.
+## [0.2.1] — 2026-07-23
 
 ### Fixed
 
-- **O servidor MCP não era descoberto após `npm link`** (#13). A causa é o PATH sanitizado do host —
-  o bin global do npm não está no ambiente do spawn, então o comando `redbar` pelado não resolve. O
-  registro agora usa launch **portátil por `npx`** (`npx -y redbar mcp`), que não depende de link nem
-  de caminho absoluto e funciona em qualquer máquina.
+- **`execute` now writes tests across every supported agent.** The agent is driven headless
+  (`agent -p <prompt>`), and in that mode each CLI (claude, codex, copilot, gemini, cursor) **denies
+  a file write it cannot get a human to approve**: the agent ran, wrote nothing, and `execute`
+  recorded `no-output` for every gap. Each row of the agent registry now carries its vendor's
+  headless auto-approve flag (`--permission-mode acceptEdits`, `--sandbox workspace-write`,
+  `--allow-tool write`, `--approval-mode auto_edit`, `-f`). redbar does not force a model — it drives
+  the agent on the developer's own config. Spec in
+  `docs/superpowers/specs/2026-07-23-execute-multi-llm-headless-write.md`.
+
+## [0.2.0] — 2026-07-22
+
+The agent writes the tests, redbar decides which and checks. `execute` hands the ranked gaps to your
+coding agent one at a time, judges each attempt with mechanical gates, and re-measures coverage — and
+run history plus `compare` turn one run against another into a before-and-after.
 
 ### Added
 
-- **`redbar mcp-config [cliente]`** — imprime o registro do servidor MCP no formato exato de cada
-  cliente. Novo registry `src/clients.ts`, uma linha de dado por cliente (mesma lei de `languages.ts`),
-  cobrindo Claude, Codex, Cursor, Copilot, Gemini e VS Code, cada um com sua sintaxe verificada. O
-  comando imprime; o dono roda.
-- **`--local`** no `mcp-config`, para quem trabalha a partir do clone: emite o launch com caminho
-  absoluto (`process.execPath` + `dist/cli.js`) em vez do `npx`.
-- **Time de agents especialistas** (`core`, `arquiteto`, `qa`, `llm-mcp`, `oss`, `scribe`) e o
-  roteamento entre eles, documentados no `AGENTS.md` — a fonte única para Claude Code, Codex, Cursor
-  e Copilot.
+- **`redbar execute`** — hands the ranked gaps to your coding agent one at a time; four mechanical
+  gates (scope, one file, assertion, execution) judge each attempt; redbar re-runs coverage and writes
+  `OUTCOME.md`, which keeps what was MEASURED separate from what the agent CLAIMS.
+- **Severity gate + authorization on `execute`.** `--severity <band>` (`critical` default, down to
+  `all`) filters by triage band; `--max <n>` caps the count within it. Before the agent touches the
+  tree, `execute` prints the plan with the measured "why" per gap and asks — `--yes` skips it for CI;
+  a clean working tree is required.
+- **Run history.** Every `briefing` / `execute` writes a dated, kept run under
+  `.redbar/runs/<timestamp>/`, never overwritten; `.redbar/latest` points at the newest.
+- **`redbar compare [<runA> <runB>]`** — diffs two kept runs by (file, symbol), tolerant to line
+  shift; reports what closed, what's new, and the per-severity delta; writes `TREND.html` /
+  `TREND.pdf`.
 
 ### Changed
 
-- **Instalação por `npx redbar`**, sem clone para o usuário final — o README passa a apresentar o
-  `mcp-config` no lugar do registro manual com `redbar` pelado.
-- `prepublishOnly` agora roda `typecheck` e os testes antes de empacotar, então uma release quebrada
-  não sai.
+- The report shows the measured "why" per gap, expandable in the HTML.
+- Gap detection excludes `mocks/` and `*.gen.ts` — real-repo noise that isn't yours to test.
+
+## [0.1.2] — 2026-07-22
+
+The MCP server discovery fix. After `npm link`, Codex (and the other clients) couldn't find `redbar`:
+the MCP host spawns the server with a sanitized PATH, without npm's global bin, so a bare
+`command: "redbar"` never resolved. Found in #13, running redbar on a real setup.
+
+### Fixed
+
+- **The MCP server wasn't discovered after `npm link`** (#13). The cause is the host's sanitized PATH
+  — npm's global bin isn't in the spawn environment, so the bare `redbar` command doesn't resolve.
+  Registration now uses a **portable `npx` launch** (`npx -y redbar mcp`), which depends on no link or
+  absolute path and works on any machine.
+
+### Added
+
+- **`redbar mcp-config [client]`** — prints the MCP server registration in each client's exact
+  format. New `src/clients.ts` registry, one row of data per client (same law as `languages.ts`),
+  covering Claude, Codex, Cursor, Copilot, Gemini, and VS Code, each with its verified syntax. The
+  command prints; the owner runs.
+- **`--local`** on `mcp-config`, for those working from a clone: emits the launch with an absolute
+  path (`process.execPath` + `dist/cli.js`) instead of `npx`.
+- **A team of specialist agents** (`core`, `arquiteto`, `qa`, `llm-mcp`, `oss`, `scribe`) and the
+  routing between them, documented in `AGENTS.md` — the single source of truth for Claude Code,
+  Codex, Cursor, and Copilot.
+
+### Changed
+
+- **Install via `npx redbar`**, no clone for the end user — the README now presents `mcp-config`
+  instead of the manual registration with a bare `redbar`.
+- `prepublishOnly` now runs `typecheck` and the tests before packing, so a broken release doesn't
+  ship.
 
 ## [0.1.1] — 2026-07-13
 
@@ -104,6 +143,8 @@ hand-written fixture** — which is the most useful thing we learned.
 - JaCoCo source roots were unreachable from `inspect()`, so any Kotlin or multi-module Maven repo
   returned **zero gaps with no error**.
 
-[Unreleased]: https://github.com/emersonjds/redbar/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/emersonjds/redbar/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/emersonjds/redbar/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/emersonjds/redbar/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/emersonjds/redbar/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/emersonjds/redbar/releases/tag/v0.1.1

@@ -101,6 +101,12 @@ Cada linha: o símbolo, a camada de teste que falta (unit / integration / e2e) e
 
 Essa divisão é o projeto inteiro: quem acha o buraco é o compilador e o git. Quem escreve é o agente. Quem confere é o compilador de novo. Teste sem asserção sobe a cobertura e não prova nada: o redbar **apaga** e marca `no-assertion`. Agente que "conserta" teu código pra fazer o teste passar: o redbar **reverte** e marca `touched-source`.
 
+## Histórico e progresso
+
+Cada `briefing` ou `execute` guarda um diretório datado em `.redbar/runs/<timestamp>/` — `.redbar/latest` sempre aponta pro mais novo. Dentro: `TESTING.md`, `REDBAR.html`, `REDBAR.pdf`, e a foto dos gaps (`gaps.json`).
+
+`redbar compare [<runA> <runB>]` abre um run contra o outro — qual buraco ficou coberto (`✓`), qual é novo, e o delta por banda de severidade. Sem argumentos, compara os dois runs mais recentes. Escreve `TREND.html` e `TREND.pdf` — o "antes e depois", pra quem não lê terminal.
+
 ## Como usar
 
 Roda no teu repo, e ele faz o resto: descobre a linguagem, o runner, roda a cobertura se faltar, e te diz o que testar.
@@ -126,10 +132,22 @@ Depois é só:
 redbar i         # inspect
 redbar b         # briefing
 redbar x         # execute
+redbar compare   # progress — diff two kept runs
 redbar why X     # explain
 ```
 
-Cada atalho tem o nome completo (`inspect`, `briefing`, `execute`, `explain`), e `--all` em qualquer um olha o repo inteiro em vez do diff.
+Cada atalho tem o nome completo. `--all` em qualquer um olha o repo inteiro em vez do diff.
+
+**`execute` — a autorização**
+
+Antes de o agente tocar em nada, o `execute` imprime o plano (cada gap, por quê, em que camada) e pede sim/não. `--yes` pula o prompt — pro CI. Sem terminal interativo e sem `--yes`, para sem editar nada. A working tree tem de estar limpa: redbar não consegue diferenciar edits teus de edits do agente.
+
+`--severity <band>` corta por triage — `critical` (padrão), `high`, `medium`, `low`, ou `all`. `--max <n>` limita dentro da banda, nunca alarga.
+
+```bash
+redbar x --severity high --max 3   # o agente escreve só 3 gaps de alta severidade
+redbar x --yes                      # CI-friendly: sem prompt
+```
 
 **Contribuir?** Clone o repo — veja [CONTRIBUTING.md](CONTRIBUTING.md).
 
@@ -165,7 +183,7 @@ Contribuidor rodando de um clone antes da publicação? Use `redbar mcp-config <
 
 Os artefatos (`TESTING.md`, `gaps.json`) ficam gravados no **teu projeto**, em `.redbar/`.
 
-Quando o redbar chegar ao npm, bastará `npx -y redbar mcp` em qualquer máquina — funciona sem clone nem link.
+redbar já está no npm: `npx -y redbar mcp` funciona em qualquer máquina, sem clone nem link.
 
 ## O motor lê a cara do projeto
 
@@ -189,7 +207,9 @@ Tudo detectado do manifest, mecanicamente, sem modelo:
 
 | | |
 |---|---|
-| ✅ Motor, CLI, MCP, gate de CI, `execute` com re-medição | verificado em repositórios reais |
+| ✅ Motor, CLI, MCP, gate de CI | verificado em repositórios reais |
+| ✅ `execute` — re-medição, gate de severidade, autorização + plano | a IA escreve; redbar julga; um humano autoriza |
+| ✅ Histórico de runs, `compare` + TREND | o antes e depois — o progresso, pra quem não lê terminal |
 | ✅ Conventions | TS, Python, Java, Rust, PHP, Go — cada regra rastreável à doc da lib |
 | 🚧 Worker pool do `fix` | |
 

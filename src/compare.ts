@@ -41,10 +41,9 @@ export function compareRuns(a: Gap[], b: Gap[]): RunDiff {
 
 const BANDS: Severity[] = ['critical', 'high', 'medium', 'low']
 
-/** The delta with its sign, human-first: `-2` reads as `-2 ✓` (progress), `+1` as `+1`. */
+// negative is progress, so it gets the ✓
 const signed = (n: number): string => (n < 0 ? `${n} ✓` : n > 0 ? `+${n}` : '0')
 
-/** The terminal summary of a comparison. Pure — the numbers are a set diff, the same twice. */
 export function renderTrendText(diff: RunDiff, from: string, to: string): string {
   const out = [
     `redbar compare — ${from} → ${to}`,
@@ -69,7 +68,6 @@ export function renderTrendText(diff: RunDiff, from: string, to: string): string
 const esc = (s: string): string =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
-/** The TREND page — the one management gets. Same numbers as the text, self-contained, printable. */
 export function renderTrendHtml(diff: RunDiff, from: string, to: string): string {
   const row = (g: Gap): string => `<li><code>${esc(g.symbol ?? '(no symbol)')}</code> — ${esc(g.file)}</li>`
   const band = (b: Severity): string =>

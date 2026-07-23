@@ -170,6 +170,16 @@ describe('renderHtml', () => {
     expect(html).not.toContain('<script>')
     expect(html).toContain('&lt;script&gt;')
   })
+
+  it('carries the measured why per gap in an expandable block — the same facts as explain', async () => {
+    const { bandReason, scoreArithmetic } = await import('../src/explain.js')
+    const g = gap({ symbol: 'divide', fullyUncovered: true, branches: 6 })
+    const html = renderHtml(inspection([g]), 'repo', 'library')
+
+    expect(html).toContain('<details class="why">')
+    expect(html).toContain(scoreArithmetic(g)) // the arithmetic, verbatim
+    expect(html).toContain(bandReason(g).trim()) // the measured reason, verbatim
+  })
 })
 
 describe('renderHtml — the profile lens', () => {

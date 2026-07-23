@@ -150,18 +150,14 @@ function readVersion(): string {
   return pkg.version
 }
 
-/**
- * A fresh, dated run directory under `.redbar/runs/`, and the `latest` pointer to it. Runs are
- * KEPT, not overwritten — a week from now the developer runs redbar again and `compare` has a
- * before to diff against. The clock names the folder; nothing measured reads it.
- */
+// A fresh dated run dir. Runs are kept, not overwritten — so compare has a before to diff against.
 function newRunDir(root: string, now: Date): string {
   const runDir = join(root, '.redbar', 'runs', runDirName(now))
   mkdirSync(runDir, { recursive: true })
   return runDir
 }
 
-/** Point `.redbar/latest` at the newest run. A symlink where the OS allows it, a text file where it does not. */
+// Point `.redbar/latest` at the newest run — a symlink, or a text file where the OS refuses one.
 function updateLatest(root: string, runDir: string): void {
   const redbar = join(root, '.redbar')
   const link = join(redbar, 'latest')
@@ -190,12 +186,8 @@ export function gateResult(
 
 const BANDS: Severity[] = ['critical', 'high', 'medium', 'low']
 
-/**
- * The band `execute` cuts on. Default is `critical` — the tool writes the least without an opt-in,
- * the same conservative default the `redbar.fix` skill already had. `all` is the explicit escape
- * hatch for "hand the agent everything". Anything else is a typo, and a typo must not silently
- * widen the scope an agent is about to edit.
- */
+// The band execute cuts on. Default critical — writes the least without an opt-in. A typo must not
+// silently widen the scope an agent is about to edit, so an unknown value throws.
 export function parseSeverityThreshold(flag: string | undefined): Severity | 'all' {
   if (flag === undefined) return 'critical'
   if (flag === 'all') return 'all'
@@ -222,12 +214,8 @@ export function authorizationOutcome(opts: {
   return opts.isTTY ? 'ask' : 'stop'
 }
 
-/**
- * The authorization plan: what the agent is about to be handed, and WHY each one, before it edits
- * anything. The why is measured — `severity`, `scoreArithmetic`, `bandReason`, the same strings
- * `redbar explain` prints, byte-identical every run. No sentence here is model-authored; that is
- * the whole point of showing it before consent (spec risk #1).
- */
+// What the agent is about to be handed, and why each one, before it edits anything. The why is
+// measured — scoreArithmetic and bandReason, byte-identical to `redbar explain`, never model text.
 export function renderExecutePlan(gaps: Gap[]): string {
   const lines = [`redbar will hand ${gaps.length} gap(s) to the agent, worst first:`, '']
   for (const gap of gaps) {
@@ -433,9 +421,8 @@ async function runExecute(argv: string[]): Promise<void> {
     return
   }
 
-  // The band is the triage axis, so it is the filter. Default is `critical`; --severity widens.
-  // Everything below the chosen band never reaches the agent — that is what settles "don't fix
-  // everything" and keeps low/medium (and the mocks that rank there) out of the worklist.
+  // The band is the triage axis, so it is the filter — everything below the chosen band never
+  // reaches the agent. Default critical; --severity widens.
   const threshold = parseSeverityThreshold(typeof flags.severity === 'string' ? flags.severity : undefined)
   const inBand =
     threshold === 'all' ? ranked(before.gaps) : ranked(before.gaps).filter((g) => meetsSeverity(g, threshold))
@@ -448,8 +435,7 @@ async function runExecute(argv: string[]): Promise<void> {
     return
   }
 
-  // --max survives as an orthogonal cap: it refines WITHIN the band ("the top 3 criticals"), it
-  // never widens it.
+  // --max caps within the band; it never widens it
   let max = inBand.length
   if (typeof flags.max === 'string') {
     max = Number(flags.max)
@@ -459,8 +445,7 @@ async function runExecute(argv: string[]): Promise<void> {
   }
   const gaps = inBand.slice(0, max)
 
-  // Authorization: show the plan and its measured why, then get consent BEFORE the agent edits the
-  // tree. print-the-plan-and-stop is the law the tool already lives by (mcp-config, init).
+  // Consent before the agent edits the tree — print the plan and its measured why, then ask.
   process.stderr.write(`redbar: agent ${agent.id}\n\n`)
   process.stderr.write(`${renderExecutePlan(gaps)}\n\n`)
 

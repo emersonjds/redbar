@@ -2,6 +2,7 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { basename, join, resolve } from 'node:path'
+import { createInterface } from 'node:readline'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { agentById, detectAgent } from './agents.js'
 import { renderBriefing, type Conventions } from './briefing.js'
@@ -24,14 +25,14 @@ import {
   renderText,
 } from './report.js'
 import { readManifest, selectE2eTool, selectRunner } from './runner.js'
-import { ranked, severity, type Severity } from './severity.js'
+import { meetsSeverity, ranked, severity, type Severity } from './severity.js'
 import type { Gap, TestKind } from './types.js'
 
 const HELP = `redbar — test-coverage gaps in what changed, zero-LLM
 
 Usage:
   redbar briefing [path] [--all] [--base <ref>] [--out <file>]   the testing brief, for your agent
-  redbar execute [path] [--agent <id>] [--all] [--base <ref>] [--max <n>]   hand the gaps to your agent
+  redbar execute [path] [--agent <id>] [--severity <band>] [--yes] [--all] [--base <ref>] [--max <n>]   hand the gaps to your agent
   redbar explain [symbol] [--all] [--path <dir>] [--base <ref>]  where a number came from
   redbar inspect [path] [--all] [--base <ref>] [--json] [--html <file>] [--md <file>] [--out <dir>] [--top <n>]
   redbar mcp [path]                                              MCP server on stdio
@@ -43,6 +44,10 @@ Usage:
 
   --all   scan the whole repository instead of the diff. The diff is the default: nobody takes a
           legacy repo to 80%, everybody can avoid making it worse. Use --all for the first look.
+
+  --severity <band>   which gaps execute hands the agent: critical (default), high, medium, low, or
+          all. It cuts by the triage band, not by count. --max still caps the number within it.
+  --yes   skip the confirmation and proceed (for CI). Without it, execute prints the plan and asks.
 
   shortcuts:  i = inspect · b = briefing · x = execute · why = explain
 `
@@ -324,6 +329,17 @@ export function dirtyTreeError(porcelain: string): string | null {
   ].join('\n')
 }
 
+/** One y/N question on the terminal. The consent decision is a human's, never the agent's. */
+function confirm(question: string): Promise<boolean> {
+  const rl = createInterface({ input: process.stdin, output: process.stderr })
+  return new Promise((resolve) => {
+    rl.question(question, (answer) => {
+      rl.close()
+      resolve(/^y(es)?$/i.test(answer.trim()))
+    })
+  })
+}
+
 /**
  * Hand each gap to the agent, gate what it wrote, then MEASURE what changed.
  *
@@ -332,8 +348,8 @@ export function dirtyTreeError(porcelain: string): string | null {
  * the runner says whether it passes, and a fresh coverage report says whether the gap is closed.
  * The agent writes; redbar grades.
  */
-function runExecute(argv: string[]): void {
-  const { positional, flags } = parseArgs(argv, new Set(['agent', 'base', 'max']))
+async function runExecute(argv: string[]): Promise<void> {
+  const { positional, flags } = parseArgs(argv, new Set(['agent', 'base', 'max', 'severity']))
   const root = positional[0] ?? '.'
 
   const git = (args: string[]) =>
@@ -370,16 +386,55 @@ function runExecute(argv: string[]): void {
     return
   }
 
-  let max = before.gaps.length
+  // The band is the triage axis, so it is the filter. Default is `critical`; --severity widens.
+  // Everything below the chosen band never reaches the agent — that is what settles "don't fix
+  // everything" and keeps low/medium (and the mocks that rank there) out of the worklist.
+  const threshold = parseSeverityThreshold(typeof flags.severity === 'string' ? flags.severity : undefined)
+  const inBand =
+    threshold === 'all' ? ranked(before.gaps) : ranked(before.gaps).filter((g) => meetsSeverity(g, threshold))
+
+  if (inBand.length === 0) {
+    console.log(
+      `redbar: no gaps at or above "${threshold}". ${before.gaps.length} gap(s) exist below it — ` +
+        `widen with --severity high (or --severity all), or run redbar inspect to see them.`,
+    )
+    return
+  }
+
+  // --max survives as an orthogonal cap: it refines WITHIN the band ("the top 3 criticals"), it
+  // never widens it.
+  let max = inBand.length
   if (typeof flags.max === 'string') {
     max = Number(flags.max)
     if (!Number.isInteger(max) || max < 1) {
       throw new Error(`redbar: --max must be a positive integer, got "${flags.max}"`)
     }
   }
-  const gaps = ranked(before.gaps).slice(0, max)
+  const gaps = inBand.slice(0, max)
 
-  process.stderr.write(`redbar: agent ${agent.id} · ${gaps.length} gap(s), worst first\n\n`)
+  // Authorization: show the plan and its measured why, then get consent BEFORE the agent edits the
+  // tree. print-the-plan-and-stop is the law the tool already lives by (mcp-config, init).
+  process.stderr.write(`redbar: agent ${agent.id}\n\n`)
+  process.stderr.write(`${renderExecutePlan(gaps)}\n\n`)
+
+  const decision = authorizationOutcome({
+    yes: flags.yes === true,
+    isTTY: Boolean(process.stdout.isTTY),
+  })
+  if (decision === 'stop') {
+    process.stderr.write(
+      `redbar: not a terminal and no --yes — stopping without touching anything. ` +
+        `Re-run with --yes to let the agent proceed.\n`,
+    )
+    return
+  }
+  if (
+    decision === 'ask' &&
+    !(await confirm(`Proceed — hand these ${gaps.length} gap(s) to ${agent.id}? [y/N] `))
+  ) {
+    process.stderr.write('redbar: aborted. Nothing was touched.\n')
+    return
+  }
 
   const read = (file: string): string | null => {
     const p = join(root, file)
@@ -696,7 +751,7 @@ export function canonical(command: string): string {
   return ALIASES[command] ?? command
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const argv = process.argv.slice(2)
   const command = argv[0] && canonical(argv[0])
 
@@ -715,7 +770,7 @@ function main(): void {
         runBriefing(argv.slice(1))
         break
       case 'execute':
-        runExecute(argv.slice(1))
+        await runExecute(argv.slice(1))
         break
       case 'explain':
         runExplain(argv.slice(1))

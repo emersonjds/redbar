@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { compareRuns, renderTrendText } from '../src/compare.js'
+import { compareRuns, renderTrendHtml, renderTrendText } from '../src/compare.js'
 import type { Gap } from '../src/types.js'
 
 const gap = (overrides: Partial<Gap>): Gap => ({
@@ -58,5 +58,31 @@ describe('renderTrendText', () => {
     expect(text).toContain('new: 0')
     expect(text).toContain('Checkout')
     expect(text).toContain('critical -1 ✓') // progress, signed
+  })
+
+  // regression is a report too: a band that got worse must read +N, and the new gaps get listed
+  it('shows new gaps and a positive band delta when things regressed', () => {
+    const a = [gap({ file: 'src/a.ts', symbol: 'Kept', fullyUncovered: true, branches: 6 })]
+    const b = [
+      gap({ file: 'src/a.ts', symbol: 'Kept', fullyUncovered: true, branches: 6 }),
+      gap({ file: 'src/new.ts', symbol: 'Regression', fullyUncovered: true, branches: 6 }),
+    ]
+    const text = renderTrendText(compareRuns(a, b), '2026-07-22', '2026-07-29')
+    expect(text).toContain('closed: 0')
+    expect(text).toContain('new: 1')
+    expect(text).toContain('critical +1') // not progress — no ✓, a signed increase
+    expect(text).toContain('Regression — src/new.ts') // the new gap, named under `new:`
+  })
+})
+
+describe('renderTrendHtml', () => {
+  it('carries the counts, the signed band delta, and escapes user strings', () => {
+    const a = [gap({ file: 'src/<x>.ts', symbol: 'A<B', fullyUncovered: true, branches: 6 })]
+    const b: Gap[] = []
+    const html = renderTrendHtml(compareRuns(a, b), '2026-07-22', '2026-07-29')
+    expect(html).toContain('critical -1 ✓') // the same signed number as the text report
+    expect(html).toContain('A&lt;B') // symbol escaped
+    expect(html).toContain('src/&lt;x&gt;.ts') // file escaped
+    expect(html).not.toContain('<code>A<B</code>') // never the raw angle brackets
   })
 })

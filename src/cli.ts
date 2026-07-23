@@ -1,7 +1,15 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
-import { basename, join, resolve } from 'node:path'
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
+import { basename, join, relative, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { agentById, detectAgent } from './agents.js'
@@ -11,6 +19,7 @@ import { detect } from './detect.js'
 import { inspect, type Inspection, type InspectOptions } from './engine.js'
 import { executeGaps, type Effects } from './execute.js'
 import { bandReason, explain, matchGaps, scoreArithmetic } from './explain.js'
+import { runDirName, summarize } from './history.js'
 import type { Language } from './languages.js'
 import { serve, type ToolArgs, type ToolBox } from './mcp.js'
 import { reconcile } from './outcome.js'
@@ -135,6 +144,30 @@ function readVersion(): string {
     version: string
   }
   return pkg.version
+}
+
+/**
+ * A fresh, dated run directory under `.redbar/runs/`, and the `latest` pointer to it. Runs are
+ * KEPT, not overwritten — a week from now the developer runs redbar again and `compare` has a
+ * before to diff against. The clock names the folder; nothing measured reads it.
+ */
+function newRunDir(root: string, now: Date): string {
+  const runDir = join(root, '.redbar', 'runs', runDirName(now))
+  mkdirSync(runDir, { recursive: true })
+  return runDir
+}
+
+/** Point `.redbar/latest` at the newest run. A symlink where the OS allows it, a text file where it does not. */
+function updateLatest(root: string, runDir: string): void {
+  const redbar = join(root, '.redbar')
+  const link = join(redbar, 'latest')
+  const target = relative(redbar, runDir)
+  rmSync(link, { force: true })
+  try {
+    symlinkSync(target, link)
+  } catch {
+    writeFileSync(link, target)
+  }
 }
 
 export type GateLimits = { maxCritical: number; maxHigh: number }
@@ -267,19 +300,28 @@ function runBriefing(argv: string[]): void {
 
   console.log(doc)
 
-  const dir = join(root, '.redbar')
-  mkdirSync(dir, { recursive: true })
+  // A dated run, kept — not clobbered. `latest` points at it, and `compare` diffs it against the
+  // run before. --out still lets the caller pin TESTING.md wherever they want (a CI artifact path).
+  const now = new Date()
+  const runDir = newRunDir(root, now)
 
-  const mdPath = typeof flags.out === 'string' ? flags.out : join(dir, 'TESTING.md')
-  const htmlPath = join(dir, 'REDBAR.html')
+  const mdPath = typeof flags.out === 'string' ? flags.out : join(runDir, 'TESTING.md')
+  const htmlPath = join(runDir, 'REDBAR.html')
   const profile = detectProfile(readManifest(root, inspection.language))
   const html = renderHtml(inspection, repo, profile)
 
   writeFileSync(mdPath, doc)
   writeFileSync(htmlPath, html)
+  writeFileSync(join(runDir, 'gaps.json'), renderJson(inspection))
+  writeFileSync(
+    join(runDir, 'summary.json'),
+    `${JSON.stringify(summarize(inspection.base, inspection.gaps, now), null, 2)}\n`,
+  )
 
-  const pdfPath = typeof flags.pdf === 'string' ? flags.pdf : join(dir, 'REDBAR.pdf')
+  const pdfPath = typeof flags.pdf === 'string' ? flags.pdf : join(runDir, 'REDBAR.pdf')
   const printed = htmlToPdf(html, resolve(pdfPath))
+
+  updateLatest(root, runDir)
 
   process.stderr.write(`\nredbar: ${mdPath} — the brief, for your agent\n`)
   process.stderr.write(`redbar: ${htmlPath} — the table, for you\n`)
@@ -289,6 +331,7 @@ function runBriefing(argv: string[]): void {
       : `redbar: no Chrome/Chromium/Edge found, so no PDF. Open ${htmlPath} and press Cmd+P — the\n` +
           `redbar: print stylesheet is already in it, and the result is the same file.\n`,
   )
+  process.stderr.write(`redbar: kept in ${runDir} — .redbar/latest points here, compare it with \`redbar compare\`\n`)
 }
 
 /**
@@ -517,16 +560,24 @@ async function runExecute(argv: string[]): Promise<void> {
   const md = renderOutcomeMarkdown(after, outcomes, agent.id)
   const html = renderOutcomeHtml(after, outcomes, agent.id, repo)
 
-  const dir = join(root, '.redbar')
-  mkdirSync(dir, { recursive: true })
-  writeFileSync(join(dir, 'OUTCOME.md'), md)
-  writeFileSync(join(dir, 'OUTCOME.html'), html)
-  const printed = htmlToPdf(html, resolve(join(dir, 'OUTCOME.pdf')))
+  // Its own kept run: the OUTCOME, plus the POST-FIX gap snapshot. That snapshot is what makes the
+  // work visible over time — `compare` reads it and reports which gaps the agent actually closed.
+  const now = new Date()
+  const runDir = newRunDir(root, now)
+  writeFileSync(join(runDir, 'OUTCOME.md'), md)
+  writeFileSync(join(runDir, 'OUTCOME.html'), html)
+  writeFileSync(join(runDir, 'gaps.json'), renderJson(after))
+  writeFileSync(
+    join(runDir, 'summary.json'),
+    `${JSON.stringify(summarize(after.base, after.gaps, now), null, 2)}\n`,
+  )
+  const printed = htmlToPdf(html, resolve(join(runDir, 'OUTCOME.pdf')))
+  updateLatest(root, runDir)
 
   console.log(md)
-  process.stderr.write(`\nredbar: ${join(dir, 'OUTCOME.md')} — what happened, for the repo\n`)
-  process.stderr.write(`redbar: ${join(dir, 'OUTCOME.html')} — the same, for you\n`)
-  if (printed) process.stderr.write(`redbar: ${join(dir, 'OUTCOME.pdf')} — the same, for whoever asks\n`)
+  process.stderr.write(`\nredbar: ${join(runDir, 'OUTCOME.md')} — what happened, for the repo\n`)
+  process.stderr.write(`redbar: ${join(runDir, 'OUTCOME.html')} — the same, for you\n`)
+  if (printed) process.stderr.write(`redbar: ${join(runDir, 'OUTCOME.pdf')} — the same, for whoever asks\n`)
 }
 
 /**

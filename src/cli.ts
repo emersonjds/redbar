@@ -51,7 +51,7 @@ Usage:
   redbar briefing [path] [--all] [--base <ref>] [--out <file>]   the testing brief, for your agent
   redbar execute [path] [--agent <id>] [--severity <band>] [--yes] [--all] [--base <ref>] [--max <n>]   hand the gaps to your agent
   redbar explain [symbol] [--all] [--path <dir>] [--base <ref>]  where a number came from
-  redbar compare [<runA> <runB>]                                 diff two kept runs — the progress, for a boss
+  redbar compare [<runA> <runB>] [--path <dir>]                   diff two kept runs — the progress, for a boss
   redbar inspect [path] [--all] [--base <ref>] [--json] [--html <file>] [--md <file>] [--out <dir>] [--top <n>]
   redbar audit [path] [--html <file>] [--md <file>] [--pdf <file>]  the whole project's test health, scored 0-100
   redbar mcp [path]                                              MCP server on stdio
@@ -719,8 +719,9 @@ export function resolveRun(runs: string[], arg: string): string {
  * the property that lets a developer put the trend in front of a boss.
  */
 export function runCompare(argv: string[]): void {
-  const { positional } = parseArgs(argv, new Set())
-  const root = '.'
+  const { positional, flags } = parseArgs(argv, new Set(['path']))
+  // the positionals are run ids, so the repository arrives as a flag — same shape as `explain`
+  const root = typeof flags.path === 'string' ? flags.path : '.'
   const runsDir = join(root, '.redbar', 'runs')
 
   if (!existsSync(runsDir)) {

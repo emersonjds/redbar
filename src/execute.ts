@@ -76,8 +76,12 @@ function attemptGap(
   // .sort(): changedFiles() makes no ordering guarantee, and this project's whole premise is a
   // deterministic answer — the same tree must produce the same output every run.
   const touched = effects.changedFiles().filter((f) => !before.has(f)).sort()
-  const testFiles = touched.filter((f) => language.testFilePattern.test(f))
-  const productFiles = touched.filter((f) => !language.testFilePattern.test(f))
+  // testPattern, the positive question: anything the runner would not collect is source as far as
+  // this gate is concerned. An agent that widens coverage.exclude in vitest.config.ts makes the gap
+  // vanish from the next report without executing a line of it, and nonProductPattern would have
+  // called that config file a test and let it through.
+  const testFiles = touched.filter((f) => language.testPattern.test(f))
+  const productFiles = touched.filter((f) => !language.testPattern.test(f))
 
   // GATE 1 — scope. An agent that edits the product to make its test pass closes the gap, raises
   // coverage, greens the suite, and has silently changed what the system does. This is the worst

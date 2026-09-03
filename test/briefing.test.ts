@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { renderBriefing } from '../src/briefing.js'
+import { WHOLE_REPO } from '../src/engine.js'
 import type { Inspection } from '../src/engine.js'
 import { byId } from '../src/languages.js'
 import type { Gap } from '../src/types.js'
@@ -23,6 +24,7 @@ const inspection = (gaps: Gap[]): Inspection => ({
   runner,
   base: 'origin/main',
   gaps,
+  coverage: new Map(),
 })
 
 describe('renderBriefing', () => {
@@ -32,6 +34,19 @@ describe('renderBriefing', () => {
     expect(md).toContain(runner.reportPath)
     expect(md).toContain('git diff origin/main')
     expect(md).toContain('No language model')
+  })
+
+  it('says what it measured instead of a git command nobody can run, on a whole-repository run', () => {
+    const md = renderBriefing(
+      { ...inspection([gap()]), base: WHOLE_REPO },
+      {},
+      'my-repo',
+      'library',
+      language.standards.e2e,
+    )
+
+    expect(md).toContain('every git-tracked source file')
+    expect(md).not.toContain('git diff')
   })
 
   it('states the rules the agent must follow when writing the tests', () => {

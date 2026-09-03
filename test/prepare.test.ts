@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { hasTests } from '../src/files.js'
-import { byId } from '../src/languages.js'
+import { byId, type Runner } from '../src/languages.js'
 import { ensureCoverage } from '../src/prepare.js'
 
 const ts = byId('ts')!
@@ -99,6 +99,58 @@ describe('ensureCoverage', () => {
   })
 })
 
+describe('ensureCoverage — running the suite (run: true)', () => {
+  it('runs the registry command and reads the report it wrote', () => {
+    const root = repo({
+      'package.json': '{"devDependencies":{"vitest":"1"}}',
+      'src/a.ts': 'export const a = 1',
+      'src/a.test.ts': 'it("x", () => {})',
+    })
+    const writes: Runner = {
+      ...runner,
+      coverageCommand: 'mkdir -p coverage && printf "SF:src/a.ts\\nDA:1,1\\nend_of_record" > coverage/lcov.info',
+    }
+
+    expect(ensureCoverage(root, ts, writes, 'coverage/lcov.info', true)).toEqual({
+      ran: true,
+      stale: false,
+    })
+  })
+
+  // a failing suite still writes a report for the tests that DID run — that report is worth
+  // reading, so a non-zero exit must not throw away what was written
+  it('still reads the report when the coverage command exits non-zero', () => {
+    const root = repo({
+      'package.json': '{"devDependencies":{"vitest":"1"}}',
+      'src/a.ts': 'export const a = 1',
+      'src/a.test.ts': 'it("x", () => {})',
+    })
+    const failsButWrites: Runner = {
+      ...runner,
+      coverageCommand:
+        'mkdir -p coverage && printf "SF:src/a.ts\\nDA:1,1\\nend_of_record" > coverage/lcov.info && exit 1',
+    }
+
+    expect(ensureCoverage(root, ts, failsButWrites, 'coverage/lcov.info', true)).toEqual({
+      ran: true,
+      stale: false,
+    })
+  })
+
+  it('throws when the command ran but the report still does not exist', () => {
+    const root = repo({
+      'package.json': '{"devDependencies":{"vitest":"1"}}',
+      'src/a.ts': 'export const a = 1',
+      'src/a.test.ts': 'it("x", () => {})',
+    })
+    const noop: Runner = { ...runner, coverageCommand: 'true' }
+
+    expect(() => ensureCoverage(root, ts, noop, 'coverage/lcov.info', true)).toThrow(
+      /still does not exist/,
+    )
+  })
+})
+
 describe('hasTests', () => {
   it('is true when a test file exists', () => {
     const root = repo({ 'package.json': '{}', 'src/a.test.ts': '' })
@@ -107,6 +159,13 @@ describe('hasTests', () => {
 
   it('is false for a project with only product code', () => {
     const root = repo({ 'package.json': '{}', 'src/a.ts': '' })
+    expect(hasTests(root, ts)).toBe(false)
+  })
+
+  // the failure this function exists to prevent: running the suite of a repo whose only "test"
+  // file is the runner config writes an empty report, which crosses to a confident "no gaps"
+  it('is false for a project whose only test-shaped file is the runner config', () => {
+    const root = repo({ 'package.json': '{}', 'vitest.config.ts': '', 'src/a.ts': '' })
     expect(hasTests(root, ts)).toBe(false)
   })
 

@@ -23,6 +23,7 @@ const inspection = (gaps: Gap[]): Inspection => ({
   runner,
   base: 'origin/main',
   gaps,
+  coverage: new Map(),
 })
 
 describe('explain', () => {
@@ -63,6 +64,48 @@ describe('explain', () => {
   it('lists the uncovered lines it is talking about', () => {
     const text = explain(inspection([gap()]), gap())
     expect(text).toContain('124')
+  })
+
+  it('summarizes a non-contiguous line list as separate ranges', () => {
+    const scattered = gap({ lines: [1, 2, 3, 7, 8], branches: 0 })
+    const text = explain(inspection([scattered]), scattered)
+
+    expect(text).toContain('1-3, 7-8')
+  })
+
+  it('bands an uncovered symbol that makes exactly one decision without the 5+ branch reason', () => {
+    const oneBranch = gap({ fullyUncovered: true, branches: 1 })
+    const text = explain(inspection([oneBranch]), oneBranch)
+
+    expect(text).toContain('no coverage, and it makes at least one decision')
+  })
+
+  it('bands an uncovered, branch-free symbol as bad but bounded', () => {
+    const straightLine = gap({ fullyUncovered: true, branches: 0 })
+    const text = explain(inspection([straightLine]), straightLine)
+
+    expect(text).toContain('no coverage, but straight-line: bad, and bounded')
+  })
+
+  it('names a single line as "line N" instead of a range', () => {
+    const single = gap({ lines: [42] })
+    const text = explain(inspection([single]), single)
+
+    expect(text).toContain('line 42')
+  })
+
+  it('bands a dense, partly covered symbol as dense rather than simple', () => {
+    const dense = gap({ fullyUncovered: false, branches: 9, lines: [10], score: 10 })
+    const text = explain(inspection([dense]), dense)
+
+    expect(text).toContain('partly covered, but dense enough that the covered path is not the risky one')
+  })
+
+  it('falls back to the file path when a partly-covered gap has no symbol', () => {
+    const anonymous = gap({ symbol: null, fullyUncovered: false, branches: 1 })
+    const text = explain(inspection([anonymous]), anonymous)
+
+    expect(text).toContain(`\`${anonymous.file}\` is **partly covered**`)
   })
 })
 

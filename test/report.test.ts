@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { byId } from '../src/languages.js'
+import { WHOLE_REPO } from '../src/engine.js'
 import type { Inspection } from '../src/engine.js'
 import { MARKER, renderHtml, renderJson, renderMarkdown, renderText } from '../src/report.js'
 import { severity } from '../src/severity.js'
@@ -20,7 +21,7 @@ const gap = (overrides: Partial<Gap>): Gap => ({
 })
 
 function inspection(gaps: Gap[]): Inspection {
-  return { language, runner, base: 'origin/master', gaps }
+  return { language, runner, base: 'origin/master', gaps, coverage: new Map() }
 }
 
 describe('renderJson', () => {
@@ -147,6 +148,19 @@ describe('renderMarkdown', () => {
     expect(md).toContain(runner.reportPath)
     expect(md).toContain('origin/master')
     expect(md).toContain('No language model')
+  })
+
+  it('names a runnable git command as the provenance of a diff run', () => {
+    const md = renderMarkdown(inspection([gap({})]))
+
+    expect(md).toContain('`git diff origin/master`')
+  })
+
+  it('says what it measured instead of a git command nobody can run, on a whole-repository run', () => {
+    const md = renderMarkdown({ ...inspection([gap({})]), base: WHOLE_REPO })
+
+    expect(md).toContain('every git-tracked source file')
+    expect(md).not.toContain('git diff')
   })
 })
 

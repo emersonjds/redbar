@@ -10,7 +10,56 @@ While the major version is `0`, the public surface — the CLI flags, the `gaps.
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-09-03
+
+The score. Until now redbar only measured a diff; `audit` measures the repository. Everything
+recorded under 0.2.1 ships here too — that version was written down but never published, so 0.2.0 is
+the release this one follows.
+
+### Added
+
+- **`redbar audit` — the whole project, scored.** `inspect` answers what the diff left untested;
+  `audit` answers what the repository is worth, out of 100, from four measured categories: **Setup**
+  (are there tests, a runner in the manifest, a coverage report), **Coverage** (executable lines of
+  product code that run under a test), **Rigor** (does every test file assert something, does any
+  disable a test) and **Pyramid** (is the layer that matters most for this kind of project the one
+  that is tested). Weights are fixed at 20/40/20/20 and not configurable — a configurable weight
+  makes two projects' scores incomparable. The score reconciles with what the project's own coverage
+  tool prints, and the report names its own denominator so a reader can redo it with a calculator.
+  `--md` and `--html` write the same numbers for a PR comment or a shareable page. Spec in
+  `docs/superpowers/specs/2026-09-03-audit-design.md`.
+
+### Changed
+
+- **The `Language` registry gained `testPattern` and renamed `testFilePattern` to
+  `nonProductPattern`.** They answer opposite questions and one field was serving both. This is a
+  breaking change to the registry type while the major version is `0`; a custom language definition
+  must supply both fields, plus the new `disabledTestPatterns`.
+
+### Fixed
+
+- **The provenance line printed a git command nobody can run.** On an `--all` run, `base` is the
+  label `(whole repository)`, not a ref, and the gap report and the briefing interpolated it into a
+  command template: the one line whose whole job is to let a reader reproduce the number rendered as
+  `git diff (whole repository)`. Both now name what was measured — every git-tracked source file.
+- **`redbar compare` could only ever diff the current directory.** It hardcoded the working
+  directory, so the runs it compared were whichever folder the shell happened to be in. Its
+  positionals are run ids, so the repository now arrives as `--path <dir>`, the same shape `explain`
+  already uses for the same reason.
+- **`hasTests` said yes for a project with no tests.** It asked "is this file not product code?",
+  which `vitest.config.ts` and `*.d.ts` answer yes to. `prepare` then told the developer to run a
+  suite that produced an empty report, and `inspect` reported no gaps — the worst possible answer.
+- **`execute`'s scope gate classified a touched config file as a test.** An agent that widened
+  `coverage.exclude` in `vitest.config.ts` made the gap disappear from the next report without
+  executing a line of it, and gate 1 let it through instead of reverting it as `touched-source`.
+- **A file the instrumenter measured and found empty was charged as fully uncovered.** No coverage
+  parser recorded a file with no executable lines, so a type-only module was indistinguishable from
+  one no test imports and cost its whole length against the score.
+
 ## [0.2.1] — 2026-07-23
+
+_Never published to npm: the version was bumped by hand, so no tag was cut and no release ran. The
+fix below reaches users in 0.3.0._
 
 ### Fixed
 
@@ -143,8 +192,9 @@ hand-written fixture** — which is the most useful thing we learned.
 - JaCoCo source roots were unreachable from `inspect()`, so any Kotlin or multi-module Maven repo
   returned **zero gaps with no error**.
 
-[Unreleased]: https://github.com/emersonjds/redbar/compare/v0.2.1...HEAD
-[0.2.1]: https://github.com/emersonjds/redbar/compare/v0.2.0...v0.2.1
+[Unreleased]: https://github.com/emersonjds/redbar/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/emersonjds/redbar/compare/v0.2.0...v0.3.0
+[0.2.1]: https://github.com/emersonjds/redbar/compare/v0.2.0...8511989
 [0.2.0]: https://github.com/emersonjds/redbar/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/emersonjds/redbar/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/emersonjds/redbar/releases/tag/v0.1.1

@@ -49,6 +49,13 @@ describe('countAssertions', () => {
     expect(countAssertions(source, byId('php')!)).toBe(2)
   })
 
+  // pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g` — no language in the
+  // registry declares an already-global assertion pattern, so this exercises the branch directly
+  it('does not double the g flag when a pattern already declares one', () => {
+    const language = { ...byId('ts')!, assertionPatterns: [/expect\s*\(/g] }
+    expect(countAssertions('expect(1).toBe(1)\nexpect(2).toBe(2)', language)).toBe(2)
+  })
+
   it('every language in the registry declares how to spot an assertion', () => {
     for (const language of LANGUAGES) {
       expect(language.assertionPatterns.length).toBeGreaterThan(0)

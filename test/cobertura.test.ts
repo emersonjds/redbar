@@ -116,11 +116,30 @@ describe('parseCobertura', () => {
     })
   })
 
+  // same rule as the lcov parser: measured-and-empty is not absent
+  it('keeps a class with no line element as a measured file with nothing executable', () => {
+    const xml = `<coverage><class filename="app/types.py" name="types.py"><lines></lines></class></coverage>`
+
+    expect(parseCobertura(xml).get('app/types.py')).toEqual({
+      file: 'app/types.py',
+      covered: [],
+      uncovered: [],
+    })
+  })
+
   // XML attribute order is not guaranteed by any writer
   it('reads number and hits in either attribute order', () => {
     const xml = `<coverage>
       <class filename="a.py"><lines><line hits="0" number="9"/></lines></class>
     </coverage>`
     expect(parseCobertura(xml).get('a.py')).toEqual({ file: 'a.py', covered: [], uncovered: [9] })
+  })
+
+  // a <line> element missing number or hits is skipped rather than recorded as line "undefined"
+  it('skips a line element missing the number or hits attribute', () => {
+    const xml = `<coverage>
+      <class filename="a.py"><lines><line hits="1"/><line number="7" hits="1"/></lines></class>
+    </coverage>`
+    expect(parseCobertura(xml).get('a.py')).toEqual({ file: 'a.py', covered: [7], uncovered: [] })
   })
 })

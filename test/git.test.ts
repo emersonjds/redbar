@@ -73,10 +73,27 @@ describe('changedLines', () => {
     expect(changed.get('hijack.ts')).toEqual([1, 5])
     expect(changed.has('hijacked')).toBe(false)
   })
+
+  // a `"` in a filename forces git to quote AND backslash-escape the path even with
+  // core.quotePath=false — that flag only turns off octal-escaping of non-ascii bytes
+  it('unescapes a quoted path git had to wrap because the name itself needs quoting', () => {
+    writeFileSync(join(repo, 'weird"name.ts'), 'export const w = 1\n')
+    git(repo, 'add', '.')
+    git(repo, 'commit', '-m', 'quoted path')
+
+    expect(changedLines(repo, 'main').get('weird"name.ts')).toEqual([1])
+  })
 })
 
 describe('detectBase', () => {
   it('falls back to main when there is no remote', () => {
     expect(detectBase(repo)).toBe('main')
+  })
+
+  it('throws a named error when the repository has neither a remote nor main/master', () => {
+    const empty = mkdtempSync(join(tmpdir(), 'redbar-git-empty-'))
+    git(empty, 'init', '-b', 'trunk') // no commits at all: `trunk` is an unborn branch, main/master do not exist
+
+    expect(() => detectBase(empty)).toThrow(/no base branch found/)
   })
 })

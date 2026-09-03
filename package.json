@@ -1,6 +1,6 @@
 {
   "name": "redbar",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Spec-driven test agents for every layer. Math finds what you changed that nothing tests; agents write it — unit, integration, e2e — following your team's spec, not the model's.",
   "type": "module",
   "license": "MIT",
@@ -29,7 +29,7 @@
     "conventions"
   ],
   "scripts": {
-    "test": "vitest run",
+    "test": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
     "coverage": "vitest run --coverage --coverage.reporter=lcov",
     "try": "tsx scripts/try.ts",

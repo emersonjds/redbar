@@ -49,6 +49,11 @@ describe('detect', () => {
     expect(detect(dir).id).toBe('ts')
   })
 
+  it('falls through to marker detection when redbar.config.json names no language', () => {
+    const dir = repo({ 'package.json': '{}', 'redbar.config.json': '{}' })
+    expect(detect(dir).id).toBe('ts')
+  })
+
   it('throws on an unknown id in the config', () => {
     const dir = repo({ 'package.json': '{}', 'redbar.config.json': '{"language":"cobol"}' })
     expect(() => detect(dir)).toThrow(/cobol/)

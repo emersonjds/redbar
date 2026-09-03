@@ -15,6 +15,7 @@ import { basename, join, relative, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { agentById, detectAgent } from './agents.js'
+import { audit, type AuditInput } from './audit.js'
 import { renderBriefing, type Conventions } from './briefing.js'
 import { CLIENTS, clientById, launch, npxLaunch } from './clients.js'
 import { compareRuns, renderTrendHtml, renderTrendText } from './compare.js'
@@ -22,6 +23,7 @@ import { detect } from './detect.js'
 import { inspect, type Inspection, type InspectOptions } from './engine.js'
 import { executeGaps, type Effects } from './execute.js'
 import { bandReason, explain, matchGaps, scoreArithmetic } from './explain.js'
+import { isProductFile, walk } from './files.js'
 import { runDirName, summarize } from './history.js'
 import type { Language } from './languages.js'
 import { serve, type ToolArgs, type ToolBox } from './mcp.js'
@@ -29,6 +31,9 @@ import { reconcile } from './outcome.js'
 import { htmlToPdf } from './pdf.js'
 import { detectProfile } from './profile.js'
 import {
+  renderAuditHtml,
+  renderAuditMarkdown,
+  renderAuditText,
   renderHtml,
   renderJson,
   renderMarkdown,
@@ -46,8 +51,9 @@ Usage:
   redbar briefing [path] [--all] [--base <ref>] [--out <file>]   the testing brief, for your agent
   redbar execute [path] [--agent <id>] [--severity <band>] [--yes] [--all] [--base <ref>] [--max <n>]   hand the gaps to your agent
   redbar explain [symbol] [--all] [--path <dir>] [--base <ref>]  where a number came from
-  redbar compare [<runA> <runB>]                                 diff two kept runs — the progress, for a boss
+  redbar compare [<runA> <runB>] [--path <dir>]                   diff two kept runs — the progress, for a boss
   redbar inspect [path] [--all] [--base <ref>] [--json] [--html <file>] [--md <file>] [--out <dir>] [--top <n>]
+  redbar audit [path] [--html <file>] [--md <file>] [--pdf <file>]  the whole project's test health, scored 0-100
   redbar mcp [path]                                              MCP server on stdio
   redbar mcp-config [client] [--local]                          paste-ready MCP registration (npx; --local for a clone)
   redbar init [path]
@@ -62,7 +68,7 @@ Usage:
           all. It cuts by the triage band, not by count. --max still caps the number within it.
   --yes   skip the confirmation and proceed (for CI). Without it, execute prints the plan and asks.
 
-  shortcuts:  i = inspect · b = briefing · x = execute · why = explain
+  shortcuts:  i = inspect · b = briefing · x = execute · why = explain · a = audit
 `
 
 const LAYERS: TestKind[] = ['unit', 'integration', 'e2e']
@@ -74,7 +80,7 @@ const LAYERS: TestKind[] = ['unit', 'integration', 'e2e']
  * fixture factory?). It is APPENDED, never a replacement — a project that overrides everything has
  * not adopted a standard, it has written a house style with extra steps.
  */
-function readConventions(root: string, language: Language): Conventions {
+export function readConventions(root: string, language: Language): Conventions {
   const conventions: Conventions = {}
   const e2eFile = selectE2eTool(root, language).conventionFile
 
@@ -92,7 +98,7 @@ function readConventions(root: string, language: Language): Conventions {
   return conventions
 }
 
-function briefingFor(root: string, inspection: Inspection): string {
+export function briefingFor(root: string, inspection: Inspection): string {
   const { language } = inspection
   const profile = detectProfile(readManifest(root, language))
   const e2eStandard = selectE2eTool(root, language).standard
@@ -109,7 +115,7 @@ type Flags = Record<string, string | boolean>
 
 /** Hand-rolled arg parsing: flags in VALUE_FLAGS consume the next argv slot, everything else
  *  starting with "--" is a boolean flag, everything else is positional. */
-function parseArgs(argv: string[], valueFlags: Set<string>): { positional: string[]; flags: Flags } {
+export function parseArgs(argv: string[], valueFlags: Set<string>): { positional: string[]; flags: Flags } {
   const positional: string[] = []
   const flags: Flags = {}
   for (let i = 0; i < argv.length; i++) {
@@ -131,7 +137,7 @@ function parseArgs(argv: string[], valueFlags: Set<string>): { positional: strin
  * pull request of every legacy project, gets switched off that afternoon, and takes the gate that
  * WOULD have worked down with it. The gate judges the diff. `--all` is for looking.
  */
-function opts(flags: Flags): InspectOptions {
+export function opts(flags: Flags): InspectOptions {
   const base = typeof flags.base === 'string' ? flags.base : undefined
   return {
     // a human at a terminal asked for an answer, not for a chore: if the report is missing, run
@@ -143,7 +149,7 @@ function opts(flags: Flags): InspectOptions {
   }
 }
 
-function readVersion(): string {
+export function readVersion(): string {
   const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
     version: string
   }
@@ -151,14 +157,14 @@ function readVersion(): string {
 }
 
 // A fresh dated run dir. Runs are kept, not overwritten — so compare has a before to diff against.
-function newRunDir(root: string, now: Date): string {
+export function newRunDir(root: string, now: Date): string {
   const runDir = join(root, '.redbar', 'runs', runDirName(now))
   mkdirSync(runDir, { recursive: true })
   return runDir
 }
 
 // Point `.redbar/latest` at the newest run — a symlink, or a text file where the OS refuses one.
-function updateLatest(root: string, runDir: string): void {
+export function updateLatest(root: string, runDir: string): void {
   const redbar = join(root, '.redbar')
   const link = join(redbar, 'latest')
   const target = relative(redbar, runDir)
@@ -234,7 +240,7 @@ export function renderExecutePlan(gaps: Gap[]): string {
   return lines.join('\n')
 }
 
-function runInspect(argv: string[]): void {
+export function runInspect(argv: string[]): void {
   const { positional, flags } = parseArgs(argv, new Set(['base', 'html', 'md', 'out', 'top']))
   const root = positional[0] ?? '.'
 
@@ -273,6 +279,91 @@ function runInspect(argv: string[]): void {
 }
 
 /**
+ * The health check, whole-repo only — "the project" is the only subject an audit has, so unlike
+ * `inspect` there is no `--base`/`--all` to take. Nothing is written to `.redbar/`: that directory
+ * is the agent-facing gap contract, and a scorecard is not a gap list.
+ */
+/**
+ * The pure half of `runAudit`: the file tree, the report and the manifest in, the `AuditInput` out.
+ * Exported because this is where the DENOMINATOR is decided, and the denominator is the number
+ * everything else in the audit divides by.
+ *
+ * Two rules, one of them not obvious:
+ *
+ *   - a file is a test or product code, never both. `testPattern` and `nonProductPattern` answer
+ *     different questions and are allowed to disagree; when they do, a file graded for its
+ *     assertions would ALSO be charged as untested product code.
+ *   - every file the coverage report measured is product code, whatever the walk yielded. `walk`
+ *     skips directories by name (`coverage/`, `dist/`, `out/`, `bin/`, `build/`) and real source
+ *     lives in some of them — dropping a measured file removes it from the numerator and the
+ *     denominator at once, and the score stops matching the report it came from. `audit` dedupes.
+ */
+export function auditInput(
+  files: Iterable<string>,
+  inspection: Inspection,
+  readSource: (file: string) => string | null,
+  manifest: string,
+): AuditInput {
+  const { language } = inspection
+  const testFiles: string[] = []
+  const productFiles: string[] = []
+
+  for (const file of files) {
+    if (language.testPattern.test(file)) testFiles.push(file)
+    else if (isProductFile(file, language)) productFiles.push(file)
+  }
+
+  for (const file of inspection.coverage.keys()) {
+    if (!language.testPattern.test(file) && isProductFile(file, language)) productFiles.push(file)
+  }
+
+  return {
+    inspection,
+    coverage: inspection.coverage,
+    testFiles,
+    productFiles,
+    readSource,
+    manifest,
+  }
+}
+
+export function runAudit(argv: string[]): void {
+  const { positional, flags } = parseArgs(argv, new Set(['html', 'md', 'pdf']))
+  const root = positional[0] ?? '.'
+
+  const inspection = inspect(root, { all: true, run: flags['no-run'] !== true })
+
+  const readSource = (file: string): string | null => {
+    const p = join(root, file)
+    return existsSync(p) ? readFileSync(p, 'utf8') : null
+  }
+
+  const result = audit(
+    auditInput(walk(root), inspection, readSource, readManifest(root, inspection.language)),
+  )
+
+  console.log(renderAuditText(result, inspection))
+
+  if (typeof flags.html === 'string') {
+    writeFileSync(flags.html, renderAuditHtml(result, inspection, basename(resolve(root))))
+  }
+
+  if (typeof flags.md === 'string') {
+    writeFileSync(flags.md, renderAuditMarkdown(result, inspection))
+  }
+
+  // The scorecard is the one output someone forwards to a person who cannot run the tool, so it
+  // gets the same PDF path briefing and compare already have — the browser on the machine renders
+  // the HTML this command already produces. No browser, no PDF, no error: the html is still there.
+  if (typeof flags.pdf === 'string') {
+    const html = renderAuditHtml(result, inspection, basename(resolve(root)))
+    if (!htmlToPdf(html, resolve(flags.pdf))) {
+      process.stderr.write(`redbar: no browser found to print ${flags.pdf} — open the --html instead\n`)
+    }
+  }
+}
+
+/**
  * The document — in the three forms the three audiences actually accept.
  *
  *   TESTING.md   the agent reads this. Plain markdown, self-contained, no tool required.
@@ -282,7 +373,7 @@ function runInspect(argv: string[]): void {
  * One inspection, three renderings. They cannot disagree, which is the only property that makes a
  * report worth sending to someone who cannot re-run it.
  */
-function runBriefing(argv: string[]): void {
+export function runBriefing(argv: string[]): void {
   const { positional, flags } = parseArgs(argv, new Set(['base', 'out', 'pdf']))
   const root = positional[0] ?? '.'
 
@@ -365,7 +456,7 @@ export function dirtyTreeError(porcelain: string): string | null {
 }
 
 /** One y/N question on the terminal. The consent decision is a human's, never the agent's. */
-function confirm(question: string): Promise<boolean> {
+export function confirm(question: string): Promise<boolean> {
   const rl = createInterface({ input: process.stdin, output: process.stderr })
   return new Promise((resolve) => {
     rl.question(question, (answer) => {
@@ -383,7 +474,7 @@ function confirm(question: string): Promise<boolean> {
  * the runner says whether it passes, and a fresh coverage report says whether the gap is closed.
  * The agent writes; redbar grades.
  */
-async function runExecute(argv: string[]): Promise<void> {
+export async function runExecute(argv: string[]): Promise<void> {
   const { positional, flags } = parseArgs(argv, new Set(['agent', 'base', 'max', 'severity']))
   const root = positional[0] ?? '.'
 
@@ -575,7 +666,7 @@ async function runExecute(argv: string[]): Promise<void> {
  * ponytail: the JVM entries take a class name where the others take a path, so maven and gradle
  * only work when the test file's basename IS the class. Fix when a JVM repo actually runs execute.
  */
-function testRunCommand(runner: string): string {
+export function testRunCommand(runner: string): string {
   const commands: Record<string, string> = {
     vitest: 'npx vitest run',
     jest: 'npx jest',
@@ -590,7 +681,7 @@ function testRunCommand(runner: string): string {
 }
 
 /** The audit. `redbar explain Checkout` — where every number in that row came from. */
-function runExplain(argv: string[]): void {
+export function runExplain(argv: string[]): void {
   const { positional, flags } = parseArgs(argv, new Set(['path', 'base']))
   const root = typeof flags.path === 'string' ? flags.path : '.'
   const query = positional[0] ?? ''
@@ -627,9 +718,10 @@ export function resolveRun(runs: string[], arg: string): string {
  * is new, the per-band delta. No model, no clock — it reads two gaps.json and subtracts, which is
  * the property that lets a developer put the trend in front of a boss.
  */
-function runCompare(argv: string[]): void {
-  const { positional } = parseArgs(argv, new Set())
-  const root = '.'
+export function runCompare(argv: string[]): void {
+  const { positional, flags } = parseArgs(argv, new Set(['path']))
+  // the positionals are run ids, so the repository arrives as a flag — same shape as `explain`
+  const root = typeof flags.path === 'string' ? flags.path : '.'
   const runsDir = join(root, '.redbar', 'runs')
 
   if (!existsSync(runsDir)) {
@@ -670,7 +762,7 @@ function runCompare(argv: string[]): void {
 }
 
 /** The MCP server. The engine, exposed to whatever agent the developer already uses. */
-function runMcp(argv: string[]): void {
+export function runMcp(argv: string[]): void {
   const { positional } = parseArgs(argv, new Set())
   const defaultRoot = positional[0] ?? '.'
 
@@ -743,7 +835,7 @@ function runMcp(argv: string[]): void {
  * through the npm-link symlink, the same realpathSync the isMain guard needs and for the same
  * reason (`npm link` leaves process.argv[1] as the symlink; the host needs the real file).
  */
-function runMcpConfig(argv: string[]): void {
+export function runMcpConfig(argv: string[]): void {
   const { positional, flags } = parseArgs(argv, new Set())
   const local = flags.local === true
   const l = local
@@ -782,7 +874,7 @@ function runMcpConfig(argv: string[]): void {
   )
 }
 
-function runInit(argv: string[]): void {
+export function runInit(argv: string[]): void {
   const { positional } = parseArgs(argv, new Set())
   const root = positional[0] ?? '.'
 
@@ -811,7 +903,7 @@ function runInit(argv: string[]): void {
   }
 }
 
-function runCi(argv: string[]): number {
+export function runCi(argv: string[]): number {
   const { positional, flags } = parseArgs(
     argv,
     new Set(['base', 'max-critical', 'max-high', 'md']),
@@ -843,13 +935,19 @@ function runCi(argv: string[]): number {
 
 // npm has `npm i`, cargo has `cargo b`: an everyday command deserves a single letter. `why` instead
 // of a letter for explain because `redbar why buscarPorTermos` reads on its own.
-const ALIASES: Record<string, string> = { i: 'inspect', b: 'briefing', x: 'execute', why: 'explain' }
+const ALIASES: Record<string, string> = {
+  i: 'inspect',
+  b: 'briefing',
+  x: 'execute',
+  why: 'explain',
+  a: 'audit',
+}
 
 export function canonical(command: string): string {
   return ALIASES[command] ?? command
 }
 
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
   const argv = process.argv.slice(2)
   const command = argv[0] && canonical(argv[0])
 
@@ -884,6 +982,9 @@ async function main(): Promise<void> {
         break
       case 'inspect':
         runInspect(argv.slice(1))
+        break
+      case 'audit':
+        runAudit(argv.slice(1))
         break
       case 'init':
         runInit(argv.slice(1))

@@ -117,6 +117,30 @@ describe('reconcile', () => {
     expect(outcomes[0]!.verdict).toBe('open')
   })
 
+  it('matches an attempt to a gap when neither carries an attributed symbol', () => {
+    const outcomes = reconcile(
+      [gap('divide', { symbol: null })],
+      [],
+      [attempt('divide', { symbol: null, testFile: 'src/calc.test.ts' })],
+    )
+
+    expect(outcomes[0]!.verdict).toBe('closed')
+  })
+
+  it('falls back to line 0 in the key when a gap carries no lines at all', () => {
+    const before = gap('divide', { lines: [] })
+    const outcomes = reconcile([before], [], [attempt('divide', { line: 0, testFile: 'x.test.ts' })])
+
+    expect(outcomes[0]!.verdict).toBe('closed')
+  })
+
+  it('carries no testFile when the closing attempt did not report one', () => {
+    const outcomes = reconcile([gap('divide')], [], [attempt('divide')])
+
+    expect(outcomes[0]!.verdict).toBe('closed')
+    expect(outcomes[0]!.testFile).toBeUndefined()
+  })
+
   it('orders the outcomes worst-band first, like every other redbar output', () => {
     const outcomes = reconcile(
       [gap('mild', { fullyUncovered: false, branches: 0, score: 9999 }), gap('nasty')],

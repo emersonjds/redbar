@@ -82,6 +82,18 @@ describe('findGaps', () => {
     })
   })
 
+  it('falls back to an empty source when readSource cannot read the gap file', () => {
+    const coverage: Coverage = new Map([
+      ['src/missing.ts', { file: 'src/missing.ts', covered: [], uncovered: [1] }],
+    ])
+    const changed: ChangedLines = new Map([['src/missing.ts', [1]]])
+
+    const gaps = findGaps(coverage, changed, ts, () => null)
+
+    // no source to extract a symbol from — an unattributed gap, not a crash
+    expect(gaps[0]).toMatchObject({ file: 'src/missing.ts', symbol: null, lines: [1] })
+  })
+
   it('a line with no symbol becomes a gap with symbol null', () => {
     const coverage: Coverage = new Map([
       ['src/x.ts', { file: 'src/x.ts', covered: [], uncovered: [1] }],
@@ -206,6 +218,16 @@ describe('findGaps', () => {
       expect(gaps).toHaveLength(1)
       expect(gaps[0]).toMatchObject({ symbol: 'Home', fullyUncovered: true, branches: 1 })
     })
+  })
+
+  // The counterpart of the absent-file rule: a file the instrumenter MEASURED and found no
+  // executable line in (a file of `export type`) carries an empty entry, and an empty entry is a
+  // measurement — there is nothing to test in it, so it is never a gap.
+  it('never reports a gap for a file measured with no executable line', () => {
+    const coverage: Coverage = new Map([['src/types.ts', { file: 'src/types.ts', covered: [], uncovered: [] }]])
+    const changed: ChangedLines = new Map([['src/types.ts', [1, 2, 3]]])
+
+    expect(findGaps(coverage, changed, ts, () => 'export type A = string\n')).toEqual([])
   })
 
   // architectural invariant: a report that reshuffles between identical runs cannot be

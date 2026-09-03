@@ -31,30 +31,100 @@ describe('language registry', () => {
   // Found on a real Next.js repo: public/ holds SERVED assets, and MSW drops its generated
   // mockServiceWorker.js there. It ranked as the repo's #3 gap — 153 lines of vendor code nobody
   // should ever test. public/ is never product code.
-  describe('the ts testFilePattern keeps non-product files out of the gap list', () => {
+  describe('the ts nonProductPattern keeps non-product files out of the gap list', () => {
     const ts = byId('ts')!
 
     it('excludes anything under public/', () => {
-      expect(ts.testFilePattern.test('public/mockServiceWorker.js')).toBe(true)
-      expect(ts.testFilePattern.test('apps/web/public/sw.js')).toBe(true)
+      expect(ts.nonProductPattern.test('public/mockServiceWorker.js')).toBe(true)
+      expect(ts.nonProductPattern.test('apps/web/public/sw.js')).toBe(true)
     })
 
     it('still treats real source as product code', () => {
-      expect(ts.testFilePattern.test('src/features/busca/aplicar-busca.ts')).toBe(false)
-      expect(ts.testFilePattern.test('src/republic/office.ts')).toBe(false) // "public" inside a name
+      expect(ts.nonProductPattern.test('src/features/busca/aplicar-busca.ts')).toBe(false)
+      expect(ts.nonProductPattern.test('src/republic/office.ts')).toBe(false) // "public" inside a name
     })
 
     // Found on a real admin front-end: MSW handlers under mocks/ and a generated TanStack router
     // (routeTree.gen.ts) both ranked as gaps. Same class of noise as public/ and .d.ts — never
     // product code a test should chase.
     it('excludes MSW handlers under mocks/ and generated *.gen files', () => {
-      expect(ts.testFilePattern.test('src/features/financial-accounts/mocks/handlers.ts')).toBe(true)
-      expect(ts.testFilePattern.test('src/routeTree.gen.ts')).toBe(true)
+      expect(ts.nonProductPattern.test('src/features/financial-accounts/mocks/handlers.ts')).toBe(true)
+      expect(ts.nonProductPattern.test('src/routeTree.gen.ts')).toBe(true)
     })
 
     it('does not over-match a name that merely contains "mocks" or "gen"', () => {
-      expect(ts.testFilePattern.test('src/mocks-helper.ts')).toBe(false)
-      expect(ts.testFilePattern.test('src/gen.ts')).toBe(false)
+      expect(ts.nonProductPattern.test('src/mocks-helper.ts')).toBe(false)
+      expect(ts.nonProductPattern.test('src/gen.ts')).toBe(false)
+    })
+
+    // A file the runner collects that this pattern calls product code is counted twice: graded for
+    // its assertions AND charged as untested source. The two patterns answer different questions,
+    // but never about the same file.
+    it('excludes every file testPattern collects', () => {
+      for (const file of ['src/app.e2e-spec.ts', 'test/math.test.mjs', 'src/a.spec.cts']) {
+        expect(ts.testPattern.test(file), `${file} is collected`).toBe(true)
+        expect(ts.nonProductPattern.test(file), `${file} is also product code`).toBe(true)
+      }
+    })
+  })
+
+  /**
+   * The POSITIVE question, and the one `nonProductPattern` cannot answer: every rejection below is
+   * a real file that lives beside the tests, is collected by no runner, and asserts nothing.
+   * `vitest.config.ts` and `conftest.py` are the two that started this — grading either as a silent
+   * test is an accusation redbar cannot back up.
+   */
+  describe('testPattern is what the runner collects, and nothing else', () => {
+    const cases: Record<string, { accepts: string[]; rejects: string[] }> = {
+      // vitest/jest collect `*.test.*` and `*.spec.*`; `app.e2e-spec.ts` is the NestJS default
+      ts: {
+        accepts: ['src/math.test.ts', 'test/gap.spec.tsx', 'test/app.e2e-spec.ts', 'src/x.test.mjs'],
+        rejects: ['vitest.config.ts', 'jest.setup.js', 'src/release.latest.ts', 'e2e/pages/login.page.ts', 'src/types.d.ts'],
+      },
+      // pytest: python_files = test_*.py *_test.py. conftest.py is fixtures, collected as none.
+      python: {
+        accepts: ['tests/test_api.py', 'app/api_test.py'],
+        rejects: ['tests/conftest.py', 'tests/factories.py', 'src/contest.py'],
+      },
+      // go test compiles _test.go and nothing else; testutil/ and testdata are ordinary packages
+      go: {
+        accepts: ['pkg/api/handler_test.go'],
+        rejects: ['internal/testutil/mock.go', 'pkg/api/testdata.go'],
+      },
+      // cargo builds each file at the TOP level of tests/ as its own crate; tests/common/mod.rs is
+      // the Book's own shared-helper file and is deliberately not one
+      rust: {
+        accepts: ['tests/api.rs'],
+        rejects: ['tests/common/mod.rs', 'src/lib.rs', 'build.rs'],
+      },
+      // surefire's suffix rule. Its `Test*` PREFIX rule is left out on purpose: it collects
+      // TestUtils.java, a helper that asserts nothing.
+      java: {
+        accepts: ['src/test/java/app/UserTest.java', 'src/test/kotlin/app/UserTests.kt'],
+        rejects: ['src/test/java/app/TestUtils.java', 'src/test/java/app/Fixtures.java'],
+      },
+      // phpunit's default testSuffix is Test.php, case-sensitive — Laravel's abstract TestCase.php
+      // is the base class, not a test
+      php: {
+        accepts: ['tests/Unit/UserTest.php'],
+        rejects: ['tests/TestCase.php', 'src/Release/Latest.php', 'tests/bootstrap.php'],
+      },
+    }
+
+    for (const [id, { accepts, rejects }] of Object.entries(cases)) {
+      it(`${id}: collects the runner test files and rejects the helpers beside them`, () => {
+        const lang = byId(id)!
+        for (const file of accepts) {
+          expect(lang.testPattern.test(file), `${id} should collect ${file}`).toBe(true)
+        }
+        for (const file of rejects) {
+          expect(lang.testPattern.test(file), `${id} must not call ${file} a test`).toBe(false)
+        }
+      })
+    }
+
+    it('covers every language in the registry', () => {
+      expect(Object.keys(cases).sort()).toEqual(LANGUAGES.map((l) => l.id).sort())
     })
   })
 
@@ -80,6 +150,30 @@ describe('language registry', () => {
     }
   })
 
+  /**
+   * `$user->only(['id'])` and `$query->skip(10)` are Eloquent, and they appear in every Laravel
+   * codebase. A bare `->skip(`/`->only(` accuses a normal repository of disabling its tests, which
+   * is the harshest sentence the audit can print. Pest spells both as a chain terminator: no
+   * argument, or a reason string — and `stripNonCode` erases the string before Rigor reads it, so
+   * both spellings have to match.
+   */
+  describe('the php disabled-test patterns read Pest, not Eloquent', () => {
+    const php = byId('php')!
+    const disabled = (code: string) => php.disabledTestPatterns.some((p) => p.test(code))
+
+    it('reads a disabled Pest test', () => {
+      expect(disabled("it('adds', fn () => expect(1)->toBe(1))->skip('flaky on ci');")).toBe(true)
+      expect(disabled("it('adds', fn () => expect(1)->toBe(1))->skip();")).toBe(true)
+      expect(disabled("it('adds', fn () => expect(1)->toBe(1))->only();")).toBe(true)
+      expect(disabled('$this->markTestSkipped();')).toBe(true)
+    })
+
+    it('does not accuse an Eloquent query of disabling a test', () => {
+      expect(disabled("$data = $user->only(['id', 'name']);")).toBe(false)
+      expect(disabled('$page = $query->skip(10)->take(5)->get();')).toBe(false)
+    })
+  })
+
   it('byId finds the language and returns null for an unknown id', () => {
     expect(byId('rust')?.name).toBe('Rust')
     expect(byId('cobol')).toBeNull()
@@ -89,6 +183,25 @@ describe('language registry', () => {
     expect(byId('ts')?.installCommand(['vitest'])).toBe('npm install -D vitest')
     expect(byId('php')?.installCommand(['phpunit/phpunit'])).toBe(
       'composer require --dev phpunit/phpunit',
+    )
+    expect(byId('rust')?.installCommand(['tokio', 'reqwest'])).toBe(
+      'cargo add --dev tokio reqwest',
+    )
+    expect(byId('go')?.installCommand(['github.com/testcontainers/testcontainers-go'])).toBe(
+      'go get github.com/testcontainers/testcontainers-go',
+    )
+    expect(byId('python')?.installCommand(['pytest', 'pytest-cov'])).toBe(
+      'pip install -U pytest pytest-cov',
+    )
+  })
+
+  // maven has no install-by-command: the human pastes the block into pom.xml, so this prints a
+  // commented dependency list instead of a runnable shell line
+  it('java installCommand prints a pom.xml block instead of a shell command', () => {
+    expect(
+      byId('java')?.installCommand(['org.junit.jupiter:junit-jupiter', 'org.mockito:mockito-core']),
+    ).toBe(
+      '# add to pom.xml (<dependencies>, with <scope>test</scope>):\n#   org.junit.jupiter:junit-jupiter\n#   org.mockito:mockito-core',
     )
   })
 })

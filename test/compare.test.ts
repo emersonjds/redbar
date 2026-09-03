@@ -39,6 +39,15 @@ describe('compareRuns', () => {
     expect(added).toEqual([])
   })
 
+  // key() falls back to '' for a gap the attribution step could not tie to a symbol
+  it('treats two null-symbol gaps in the same file as the same identity', () => {
+    const a = [gap({ file: 'src/a.ts', symbol: null })]
+    const b = [gap({ file: 'src/a.ts', symbol: null })]
+    const { closed, added } = compareRuns(a, b)
+    expect(closed).toEqual([])
+    expect(added).toEqual([])
+  })
+
   it('gives the per-band delta — negative is progress', () => {
     const a = [
       gap({ file: 'src/a.ts', symbol: 'A', fullyUncovered: true, branches: 6 }), // critical
@@ -73,6 +82,14 @@ describe('renderTrendText', () => {
     expect(text).toContain('critical +1') // not progress — no ✓, a signed increase
     expect(text).toContain('Regression — src/new.ts') // the new gap, named under `new:`
   })
+
+  it('falls back to (no symbol) for a closed or new gap the engine could not attribute', () => {
+    const a = [gap({ file: 'src/a.ts', symbol: null, fullyUncovered: true, branches: 6 })]
+    const b = [gap({ file: 'src/b.ts', symbol: null, fullyUncovered: true, branches: 6 })]
+    const text = renderTrendText(compareRuns(a, b), '2026-07-22', '2026-07-29')
+    expect(text).toContain('(no symbol) — src/a.ts')
+    expect(text).toContain('(no symbol) — src/b.ts')
+  })
 })
 
 describe('renderTrendHtml', () => {
@@ -84,5 +101,14 @@ describe('renderTrendHtml', () => {
     expect(html).toContain('A&lt;B') // symbol escaped
     expect(html).toContain('src/&lt;x&gt;.ts') // file escaped
     expect(html).not.toContain('<code>A<B</code>') // never the raw angle brackets
+  })
+
+  it('renders the New section without a Closed section when nothing closed', () => {
+    const a: Gap[] = []
+    const b = [gap({ file: 'src/new.ts', symbol: null, fullyUncovered: true, branches: 6 })]
+    const html = renderTrendHtml(compareRuns(a, b), '2026-07-22', '2026-07-29')
+    expect(html).not.toContain('<h2>Closed</h2>')
+    expect(html).toContain('<h2>New</h2>')
+    expect(html).toContain('(no symbol)') // null symbol escaped through the same fallback as text
   })
 })

@@ -6,7 +6,7 @@ import { countAssertions } from './assertions.js'
 import { classify } from './classify.js'
 import { stripNonCode } from './code.js'
 import type { Inspection } from './engine.js'
-import { detectProfile, kindPriority, profileLabel, type Profile } from './profile.js'
+import { detectProfile, kindPriority, type Profile } from './profile.js'
 import type { Coverage, TestKind } from './types.js'
 
 export type Category = 'setup' | 'coverage' | 'rigor' | 'pyramid'
@@ -306,7 +306,10 @@ function scorePyramid(input: AuditInput, productFiles: string[], profile: Profil
     checks.push({
       category: 'pyramid',
       passed: rate <= LAYER_LIMIT,
-      detail: `${kind} weighs ×${weight} (${profileLabel(profile)}) — ${count(gapLines)} of ${count(productLines)} lines (${percent(gapLines, productLines)}%) untested`,
+      // the profile is NOT repeated here: it is named once in the header, and the order it
+      // produces is stated once under the bars. Three rows apologising for the same profile is
+      // noise around a measurement.
+      detail: `${kind} weighs ×${weight} — ${count(gapLines)} of ${count(productLines)} lines (${percent(gapLines, productLines)}%) untested`,
     })
   }
 

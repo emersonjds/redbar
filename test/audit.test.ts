@@ -265,7 +265,7 @@ describe('audit', () => {
       expect(result.profile).toBe('backend')
       expect(result.scores.pyramid).toBe(40)
       expect(failedDetails(result)).toContainEqual(
-        'integration weighs ×3 (a backend project) — 2 of 2 lines (100%) untested',
+        'integration weighs ×3 — 2 of 2 lines (100%) untested',
       )
     })
 

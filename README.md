@@ -48,16 +48,17 @@ npx -y redbar briefing      # the document for your agent, plus HTML and PDF
 npx -y redbar execute       # the agent writes; redbar judges and re-measures
 npx -y redbar explain X     # where X's number came from, step by step
 npx -y redbar compare       # diff two kept runs: what closed, what's new
+npx -y redbar audit         # the whole project's test health, scored 0-100
 ```
 
 Or install it once, globally:
 
 ```bash
 npm i -g redbar
-redbar inspect              # short aliases: i · b · x · why X
+redbar inspect              # short aliases: i · b · x · why X · a
 ```
 
-Every command has a short alias (`i`, `b`, `x`, `why`). Add `--all` to scan the whole repo instead of the diff.
+Every command has a short alias (`i`, `b`, `x`, `why`, `a`). Add `--all` to scan the whole repo instead of the diff.
 
 **The `execute` authorization gate.** Before the agent touches anything, `execute` prints the plan — each gap, the measured why, which layer — and asks yes/no. The working tree must be clean, so redbar can tell your edits apart from the agent's.
 
@@ -69,6 +70,18 @@ redbar execute --yes                     # CI-friendly: skip the prompt
 `--severity <band>` filters by triage — `critical` (default), `high`, `medium`, `low`, or `all`. `--max <n>` caps the count within the band. `--yes` skips the prompt for CI; without an interactive terminal and without `--yes`, execute stops without editing.
 
 **Run history and `compare`.** Each `briefing` or `execute` saves a timestamped directory under `.redbar/runs/<timestamp>/`, never overwritten — `TESTING.md`, `REDBAR.html`, `REDBAR.pdf`, and a snapshot of the gaps (`gaps.json`). `.redbar/latest` points to the newest. `redbar compare [<runA> <runB>]` diffs two kept runs by (file, symbol), tolerant to line shift: which gap closed, which is new, and the per-severity delta. With no arguments it compares the two most recent runs.
+
+**The whole project, scored: `audit`.** `inspect` looks at what you changed. `audit` looks at everything and scores the repository's test health out of 100, from four measured categories, each printed with the arithmetic behind it.
+
+```bash
+redbar audit                 # the scorecard in your terminal
+redbar audit --md audit.md   # the same numbers, for a PR comment
+```
+
+- **Setup** — are there test files, does the manifest name a runner, is there a coverage report?
+- **Coverage** — how many executable lines of product code run under a test?
+- **Rigor** — does every test file assert something, and does any of them disable a test?
+- **Pyramid** — is the layer that matters most for this kind of project the one that is tested?
 
 ### MCP
 

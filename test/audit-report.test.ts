@@ -41,7 +41,7 @@ function scored(over: Partial<Audit> = {}): Audit {
       check('coverage', false, '31 of 82 product files (38%) have no coverage at all'),
       check('coverage', false, '1,204 of 2,310 executable lines are untested'),
       check('rigor', false, '4 of 82 test files assert nothing'),
-      check('pyramid', false, 'integration weighs ×3 (a backend project) — 810 of 1,000 lines (81%) untested'),
+      check('pyramid', false, 'integration weighs ×3 — 810 of 1,000 lines (81%) untested'),
     ],
     profile: 'backend',
     unmeasurable: false,
@@ -113,6 +113,19 @@ describe('renderAuditText', () => {
 
     expect(text.indexOf('pyramid line first')).toBeLessThan(text.indexOf('coverage line second'))
     expect(text.indexOf('coverage line second')).toBeLessThan(text.indexOf('rigor line third'))
+  })
+
+  it('explains the pyramid weights once, under the bars, and names the profile once', () => {
+    const text = renderAuditText(scored(), inspection())
+
+    // a backend project weighs integration first — the order kindPriority produced
+    expect(text).toContain('Pyramid weighs the layers heaviest first: integration, unit, e2e.')
+    // the header names the profile; no Pyramid row repeats it
+    expect(text.match(/a backend project/g)).toHaveLength(1)
+  })
+
+  it('leaves the weight rule out when no pyramid row was measured', () => {
+    expect(renderAuditText(unmeasurable(), inspection())).not.toContain('heaviest first')
   })
 
   it('ends in the handoff command', () => {

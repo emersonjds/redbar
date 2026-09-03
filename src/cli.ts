@@ -53,7 +53,7 @@ Usage:
   redbar explain [symbol] [--all] [--path <dir>] [--base <ref>]  where a number came from
   redbar compare [<runA> <runB>]                                 diff two kept runs — the progress, for a boss
   redbar inspect [path] [--all] [--base <ref>] [--json] [--html <file>] [--md <file>] [--out <dir>] [--top <n>]
-  redbar audit [path] [--html <file>] [--md <file>]              the testing health of the whole project
+  redbar audit [path] [--html <file>] [--md <file>]              the whole project's test health, scored 0-100
   redbar mcp [path]                                              MCP server on stdio
   redbar mcp-config [client] [--local]                          paste-ready MCP registration (npx; --local for a clone)
   redbar init [path]

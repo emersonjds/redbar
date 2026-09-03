@@ -599,6 +599,18 @@ const auditProvenance = (inspection: Inspection, tick = '`'): string =>
   `From ${tick}${inspection.runner.reportPath}${tick}, the git-tracked file tree and the manifest. ` +
   `No language model produced these numbers.`
 
+/**
+ * The weight rule, stated ONCE, right under the bars where the reader meets the word Pyramid.
+ * `kindPriority` is the same order `scorePyramid` turned into ×3, ×2, ×1, and the profile that
+ * chose it is already in the header — so no Pyramid row repeats either.
+ */
+const pyramidRule = (profile: Profile): string =>
+  `Pyramid weighs the layers heaviest first: ${kindPriority(profile).join(', ')}.`
+
+/** No Pyramid row, nothing to explain — a project whose layers have no product line at all. */
+const explainsPyramid = (audit: Audit): boolean =>
+  audit.checks.some((c) => c.category === 'pyramid')
+
 /** The handoff, not decoration: audit diagnoses the project, inspect names the symbols. */
 const HANDOFF = 'redbar inspect --all'
 const HANDOFF_WHY = 'for the symbols, ranked by criticality'
@@ -606,8 +618,8 @@ const HANDOFF_WHY = 'for the symbols, ranked by criticality'
 /** Setup === 0. One instruction, and nothing else — scoring coverage for someone with no tests is
  *  a correct answer to a question they did not ask. */
 const NO_TESTS = [
-  'This repository has no tests. Coverage, rigor and pyramid were not computed —',
-  'they are unmeasurable, not zero.',
+  'This repository has no tests. Coverage, Rigor and Pyramid are not in the score',
+  'above. They are unmeasurable, not zero.',
 ]
 const INIT = 'redbar init'
 const INIT_WHY = 'to set up a runner and a coverage report'
@@ -629,12 +641,14 @@ export function renderAuditText(audit: Audit, inspection: Inspection): string {
     )
   }
 
+  if (explainsPyramid(audit)) out.push('', `  ${pyramidRule(audit.profile)}`)
+
   if (audit.stale) {
     out.push(
       '',
       `WARNING: ${runner.reportPath} is older than the source. Code written since the last`,
-      `         coverage run is absent from the report, and absent reads as untested —`,
-      `         this score is a LOWER BOUND.`,
+      `         coverage run is absent from the report, and absent reads as untested.`,
+      `         This score is a LOWER BOUND.`,
       `         Regenerate: ${runner.coverageCommand}`,
     )
   }
@@ -691,6 +705,8 @@ export function renderAuditMarkdown(audit: Audit, inspection: Inspection): strin
     out.push(`| ${CATEGORY_LABEL[category]} | ${audit.scores[category]} | \`${bar(audit.scores[category]!)}\` |`)
   }
   out.push('')
+
+  if (explainsPyramid(audit)) out.push(pyramidRule(audit.profile), '')
 
   const block = (title: string, checks: Check[]) =>
     checks.length === 0
@@ -787,10 +803,11 @@ export function renderAuditHtml(audit: Audit, inspection: Inspection, repoName: 
 <div class="overall">${audit.overall} <span>overall</span></div>
 <div class="scores">${measuredCategories(audit).map(scoreRow).join('')}
 </div>
+${explainsPyramid(audit) ? `<div class="sub">${esc(pyramidRule(audit.profile))}</div>` : ''}
 ${
   audit.stale
     ? `<div class="stale">
-  <b>This score is a lower bound, not the truth.</b> <code>${esc(runner.reportPath)}</code> is older
+  <b>This score is a lower bound.</b> <code>${esc(runner.reportPath)}</code> is older
   than the source code it describes. Anything written since the last coverage run is absent from the
   report, and absent reads as untested. Regenerate with <code>${esc(runner.coverageCommand)}</code>
   and audit again.

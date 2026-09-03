@@ -79,6 +79,20 @@ export type Language = {
    */
   assertionPatterns: RegExp[]
   /**
+   * How a DISABLED test is spelled in this language's test idiom — `.skip`, `.only`, `xit`,
+   * `@Disabled`, `@pytest.mark.skip`, `t.Skip`.
+   *
+   * `audit` counts these to score Rigor: a suite that is half skipped produces a coverage report
+   * that looks fine, which is the failure mode `inspect` structurally cannot see. Matched against
+   * `stripNonCode` output, exactly like `assertionPatterns` — a `// it.skip(...)` in a comment is
+   * not a disabled test.
+   *
+   * Known ceiling: `stripNonCode` erases `#`-comments, and it cannot tell a comment from a Rust
+   * attribute, so `#[ignore]` is blanked out with them and goes undetected. The error runs in the
+   * safe direction — a file is called clean, never falsely accused.
+   */
+  disabledTestPatterns: RegExp[]
+  /**
    * Test libs `init` proposes for the layers that are language-wide. `unit` is NOT here:
    * it belongs to the runner (jest vs vitest), and putting it here is what made init tell a
    * jest project to install vitest. The human approves; the tool never installs.
@@ -120,6 +134,7 @@ export const LANGUAGES: Language[] = [
       /^\s*impl\s+(?:\w+\s+for\s+)?(\w+)/,
     ],
     assertionPatterns: [/\bassert(_eq|_ne)?!\s*\(/, /\bpanic!\s*\(/],
+    disabledTestPatterns: [/#\[ignore\b/],
     testLibs: {
       integration: ['tokio', 'reqwest'],
       e2e: ['@playwright/test'],
@@ -155,6 +170,7 @@ export const LANGUAGES: Language[] = [
     testFilePattern: /_test\.go$/,
     symbolPatterns: [/^func\s+(?:\([^)]*\)\s+)?([A-Z]\w*)/, /^type\s+([A-Z]\w*)/],
     assertionPatterns: [/\bassert\.\w+\s*\(/, /\brequire\.\w+\s*\(/, /\bt\.(Error|Fatal)\w*\s*\(/],
+    disabledTestPatterns: [/\bt\.Skip(Now|f)?\s*\(/],
     testLibs: {
       integration: ['github.com/testcontainers/testcontainers-go'],
       e2e: ['@playwright/test'],
@@ -200,6 +216,7 @@ export const LANGUAGES: Language[] = [
       /^\s*public\s+(?:static\s+|final\s+|synchronized\s+|abstract\s+)*[\w<>\[\].]+\s+(\w+)\s*\(/,
     ],
     assertionPatterns: [/\bassert\w*\s*\(/, /\bverify\s*\(/],
+    disabledTestPatterns: [/@(Disabled|Ignore)\b/],
     testLibs: {
       integration: [
         'org.springframework.boot:spring-boot-starter-test',
@@ -243,6 +260,7 @@ export const LANGUAGES: Language[] = [
       /^\s*public\s+(?:static\s+)?function\s+(\w+)/,
     ],
     assertionPatterns: [/\bassert\w*\s*\(/],
+    disabledTestPatterns: [/\bmarkTest(Skipped|Incomplete)\s*\(/, /->\s*(skip|only)\s*\(/],
     testLibs: {
       integration: ['phpunit/phpunit', 'guzzlehttp/guzzle'],
       e2e: ['@playwright/test'],
@@ -277,6 +295,7 @@ export const LANGUAGES: Language[] = [
     testFilePattern: /(^|\/)tests?\/|(^|\/)test_[^\/]+\.py$|_test\.py$/,
     symbolPatterns: [/^def\s+(\w+)/, /^class\s+(\w+)/],
     assertionPatterns: [/^\s*assert\b/m, /\bpytest\.raises\s*\(/, /\bself\.assert\w+\s*\(/],
+    disabledTestPatterns: [/@(pytest\.mark\.skip\w*|unittest\.skip\w*)\b/, /\b(pytest\.skip|self\.skipTest)\s*\(/],
     testLibs: {
       integration: ['pytest', 'httpx', 'testcontainers'],
       e2e: ['pytest-playwright'],
@@ -341,6 +360,7 @@ export const LANGUAGES: Language[] = [
       /^(?:export\s+)?(?:const|let)\s+(\w+)/,
     ],
     assertionPatterns: [/\bexpect\s*\(/, /\bassert\w*\s*\(/],
+    disabledTestPatterns: [/\b(it|test|describe|suite|bench)\.(skip|only|todo|failing)\b/, /\b(xit|xtest|xdescribe|fit|fdescribe)\s*\(/],
     testLibs: {
       integration: ['supertest'],
       e2e: ['@playwright/test'],

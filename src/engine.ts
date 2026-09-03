@@ -17,6 +17,8 @@ export type Inspection = {
   runner: Runner
   base: string
   gaps: Gap[]
+  /** the whole parsed report — `audit` needs the whole map, not just the gaps derived from it. */
+  coverage: Coverage
   /**
    * The coverage report is older than the code. The gap list is then a LOWER BOUND, not the truth:
    * code written after the last coverage run is absent from the report entirely, and absent reads
@@ -75,7 +77,14 @@ export function inspect(root: string, opts: InspectOptions = {}): Inspection {
   const changed =
     opts.changed ?? (opts.all ? everyLine(root, language, readSource) : changedLines(root, base))
 
-  return { language, runner, base, stale, gaps: findGaps(coverage, changed, language, readSource) }
+  return {
+    language,
+    runner,
+    base,
+    stale,
+    coverage,
+    gaps: findGaps(coverage, changed, language, readSource),
+  }
 }
 
 /** what `base` reads as when there is no diff, because the whole repo is the subject */

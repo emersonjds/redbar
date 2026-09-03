@@ -16,6 +16,7 @@ describe('canonical', () => {
     expect(canonical('b')).toBe('briefing')
     expect(canonical('x')).toBe('execute')
     expect(canonical('why')).toBe('explain')
+    expect(canonical('a')).toBe('audit')
   })
 
   it('deixa o nome completo e o desconhecido passarem intactos', () => {

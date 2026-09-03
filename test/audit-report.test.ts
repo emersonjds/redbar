@@ -14,7 +14,14 @@ const ts = byId('ts')!
 const vitest = ts.runners[0]!
 
 function inspection(stale?: boolean): Inspection {
-  return { language: ts, runner: vitest, base: '(whole repository)', gaps: [], stale }
+  return {
+    language: ts,
+    runner: vitest,
+    base: '(whole repository)',
+    gaps: [],
+    coverage: new Map(),
+    stale,
+  }
 }
 
 const check = (category: Check['category'], passed: boolean, detail: string): Check => ({

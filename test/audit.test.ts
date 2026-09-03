@@ -10,7 +10,7 @@ const vitest = ts.runners[0]!
 const MANIFEST_WITH_RUNNER = '{"devDependencies":{"vitest":"^1.0.0","express":"^4.0.0"}}'
 
 function inspection(gaps: Gap[] = [], stale?: boolean): Inspection {
-  return { language: ts, runner: vitest, base: '(whole repository)', gaps, stale }
+  return { language: ts, runner: vitest, base: '(whole repository)', gaps, coverage: new Map(), stale }
 }
 
 function gap(file: string, kind: Gap['kind'], lines: number[]): Gap {

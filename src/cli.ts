@@ -15,6 +15,7 @@ import { basename, join, relative, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { agentById, detectAgent } from './agents.js'
+import { audit, type AuditInput } from './audit.js'
 import { renderBriefing, type Conventions } from './briefing.js'
 import { CLIENTS, clientById, launch, npxLaunch } from './clients.js'
 import { compareRuns, renderTrendHtml, renderTrendText } from './compare.js'
@@ -22,6 +23,7 @@ import { detect } from './detect.js'
 import { inspect, type Inspection, type InspectOptions } from './engine.js'
 import { executeGaps, type Effects } from './execute.js'
 import { bandReason, explain, matchGaps, scoreArithmetic } from './explain.js'
+import { isProductFile, walk } from './files.js'
 import { runDirName, summarize } from './history.js'
 import type { Language } from './languages.js'
 import { serve, type ToolArgs, type ToolBox } from './mcp.js'
@@ -29,6 +31,9 @@ import { reconcile } from './outcome.js'
 import { htmlToPdf } from './pdf.js'
 import { detectProfile } from './profile.js'
 import {
+  renderAuditHtml,
+  renderAuditMarkdown,
+  renderAuditText,
   renderHtml,
   renderJson,
   renderMarkdown,
@@ -48,6 +53,7 @@ Usage:
   redbar explain [symbol] [--all] [--path <dir>] [--base <ref>]  where a number came from
   redbar compare [<runA> <runB>]                                 diff two kept runs — the progress, for a boss
   redbar inspect [path] [--all] [--base <ref>] [--json] [--html <file>] [--md <file>] [--out <dir>] [--top <n>]
+  redbar audit [path] [--html <file>] [--md <file>]              the testing health of the whole project
   redbar mcp [path]                                              MCP server on stdio
   redbar mcp-config [client] [--local]                          paste-ready MCP registration (npx; --local for a clone)
   redbar init [path]
@@ -62,7 +68,7 @@ Usage:
           all. It cuts by the triage band, not by count. --max still caps the number within it.
   --yes   skip the confirmation and proceed (for CI). Without it, execute prints the plan and asks.
 
-  shortcuts:  i = inspect · b = briefing · x = execute · why = explain
+  shortcuts:  i = inspect · b = briefing · x = execute · why = explain · a = audit
 `
 
 const LAYERS: TestKind[] = ['unit', 'integration', 'e2e']
@@ -270,6 +276,50 @@ function runInspect(argv: string[]): void {
   const outDir = resolve(root, typeof flags.out === 'string' ? flags.out : '.redbar')
   mkdirSync(outDir, { recursive: true })
   writeFileSync(join(outDir, 'gaps.json'), renderJson(inspection))
+}
+
+/**
+ * The health check, whole-repo only — "the project" is the only subject an audit has, so unlike
+ * `inspect` there is no `--base`/`--all` to take. Nothing is written to `.redbar/`: that directory
+ * is the agent-facing gap contract, and a scorecard is not a gap list.
+ */
+function runAudit(argv: string[]): void {
+  const { positional, flags } = parseArgs(argv, new Set(['html', 'md']))
+  const root = positional[0] ?? '.'
+
+  const inspection = inspect(root, { all: true, run: flags['no-run'] !== true })
+
+  const testFiles: string[] = []
+  const productFiles: string[] = []
+  for (const file of walk(root)) {
+    if (inspection.language.testPattern.test(file)) testFiles.push(file)
+    if (isProductFile(file, inspection.language)) productFiles.push(file)
+  }
+
+  const readSource = (file: string): string | null => {
+    const p = join(root, file)
+    return existsSync(p) ? readFileSync(p, 'utf8') : null
+  }
+
+  const input: AuditInput = {
+    inspection,
+    coverage: inspection.coverage,
+    testFiles,
+    productFiles,
+    readSource,
+    manifest: readManifest(root, inspection.language),
+  }
+  const result = audit(input)
+
+  console.log(renderAuditText(result, inspection))
+
+  if (typeof flags.html === 'string') {
+    writeFileSync(flags.html, renderAuditHtml(result, inspection, basename(resolve(root))))
+  }
+
+  if (typeof flags.md === 'string') {
+    writeFileSync(flags.md, renderAuditMarkdown(result, inspection))
+  }
 }
 
 /**
@@ -843,7 +893,13 @@ function runCi(argv: string[]): number {
 
 // npm has `npm i`, cargo has `cargo b`: an everyday command deserves a single letter. `why` instead
 // of a letter for explain because `redbar why buscarPorTermos` reads on its own.
-const ALIASES: Record<string, string> = { i: 'inspect', b: 'briefing', x: 'execute', why: 'explain' }
+const ALIASES: Record<string, string> = {
+  i: 'inspect',
+  b: 'briefing',
+  x: 'execute',
+  why: 'explain',
+  a: 'audit',
+}
 
 export function canonical(command: string): string {
   return ALIASES[command] ?? command
@@ -884,6 +940,9 @@ async function main(): Promise<void> {
         break
       case 'inspect':
         runInspect(argv.slice(1))
+        break
+      case 'audit':
+        runAudit(argv.slice(1))
         break
       case 'init':
         runInit(argv.slice(1))

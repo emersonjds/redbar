@@ -23,6 +23,7 @@ const inspection = (gaps: Gap[]): Inspection => ({
   runner,
   base: 'origin/main',
   gaps,
+  coverage: new Map(),
 })
 
 describe('explain', () => {

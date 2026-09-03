@@ -68,7 +68,7 @@ export function audit(input: AuditInput): Audit {
   // sorted and deduped BEFORE anything is counted — the caller's walk order is a filesystem
   // artifact, not a contract, and Setup and Rigor must never report two different counts of the
   // same list.
-  const productFiles = unique(input.productFiles)
+  const { measured: productFiles, unreachable } = universe(unique(input.productFiles), input.coverage)
   const testFiles = unique(input.testFiles)
 
   const setup = scoreSetup(input, testFiles)
@@ -82,7 +82,7 @@ export function audit(input: AuditInput): Audit {
       scores: { setup: setup.score },
       // the fixed weight applied to the one category that was measured. Nothing is renormalised:
       // a per-repo weight makes two repos incomparable, which is the whole point of WEIGHTS.
-      overall: round(setup.score * WEIGHTS.setup),
+      overall: score(setup.score * WEIGHTS.setup),
       checks: setup.checks,
       profile,
       unmeasurable: true,
@@ -90,7 +90,7 @@ export function audit(input: AuditInput): Audit {
     }
   }
 
-  const coverage = scoreCoverage(input, productFiles)
+  const coverage = scoreCoverage(input, productFiles, unreachable.length)
   const rigor = scoreRigor(input, testFiles)
   const pyramid = scorePyramid(input, productFiles, profile)
 
@@ -103,7 +103,7 @@ export function audit(input: AuditInput): Audit {
 
   return {
     scores,
-    overall: round(
+    overall: score(
       scores.setup * WEIGHTS.setup +
         scores.coverage * WEIGHTS.coverage +
         scores.rigor * WEIGHTS.rigor +
@@ -163,16 +163,33 @@ function scoreSetup(input: AuditInput, testFiles: string[]): Scored {
 }
 
 /** Coverage = 100 × covered ÷ executable, over product files. */
-function scoreCoverage(input: AuditInput, productFiles: string[]): Scored {
+function scoreCoverage(input: AuditInput, productFiles: string[], unreachable: number): Scored {
   let executable = 0
   let covered = 0
   let dark = 0
+  // the two halves of the denominator, kept apart so the report can state where each line came from
+  let fromReport = 0
+  let unseen = 0
+  let unseenFiles = 0
+  // a file with nothing executable in it can neither be covered nor be dark — it is not part of
+  // this ratio at all, and putting it in the "N of M product files" denominator dilutes it
+  let measurable = 0
 
   for (const file of productFiles) {
     const l = lines(file, input)
     executable += l.executable
     covered += l.covered
-    if (l.executable > 0 && l.covered === 0) dark++
+
+    if (input.coverage.has(file)) {
+      fromReport += l.executable
+    } else {
+      unseen += l.executable
+      unseenFiles++
+    }
+
+    if (l.executable === 0) continue
+    measurable++
+    if (l.covered === 0) dark++
   }
 
   // Concentration is reported, never folded into the score as a hidden multiplier: two numbers
@@ -183,8 +200,8 @@ function scoreCoverage(input: AuditInput, productFiles: string[]): Scored {
       passed: dark === 0,
       detail:
         dark === 0
-          ? `all ${count(productFiles.length)} product file(s) have at least one covered line`
-          : `${count(dark)} of ${count(productFiles.length)} product files (${percent(dark, productFiles.length)}%) have no coverage at all`,
+          ? `all ${count(measurable)} product file(s) have at least one covered line`
+          : `${count(dark)} of ${count(measurable)} product files (${percent(dark, measurable)}%) have no coverage at all`,
     },
     {
       category: 'coverage',
@@ -194,9 +211,97 @@ function scoreCoverage(input: AuditInput, productFiles: string[]): Scored {
           ? `all ${count(executable)} executable line(s) are covered`
           : `${count(executable - covered)} of ${count(executable)} executable lines are untested`,
     },
+    // The reconciliation, stated in the document itself: this score and the percentage the
+    // project's own coverage tool prints are read from the same report, and these two sentences
+    // are every line redbar added to it and every line it left out. Without them the two numbers
+    // differ and nobody — not the reader, not the author — can say why.
+    {
+      category: 'coverage',
+      passed: true,
+      detail:
+        `denominator: ${count(executable)} executable line(s) — ${count(fromReport)} from ${input.inspection.runner.reportPath}` +
+        (unseenFiles > 0
+          ? `, ${count(unseen)} in ${count(unseenFiles)} product file(s) it never saw`
+          : ''),
+    },
   ]
 
-  return { score: executable === 0 ? 100 : percent(covered, executable), checks }
+  const report = totals(input.coverage)
+  const leftOut = report.executable - fromReport
+  const leftOutFiles = input.coverage.size - (productFiles.length - unseenFiles)
+
+  if (leftOut > 0 || unreachable > 0) {
+    checks.push({
+      category: 'coverage',
+      passed: true,
+      detail: [
+        'left out:',
+        leftOut > 0
+          ? `${count(leftOut)} line(s) (${count(report.covered - covered)} covered) in ${count(leftOutFiles)} file(s) the report measured that are not product code`
+          : '',
+        leftOut > 0 && unreachable > 0 ? 'and' : '',
+        unreachable > 0
+          ? `${count(unreachable)} product file(s) in directories the report never measured`
+          : '',
+      ]
+        .filter(Boolean)
+        .join(' '),
+    })
+  }
+
+  return { score: executable === 0 ? 100 : scoreRatio(covered, executable), checks }
+}
+
+/** The report's own totals — what the project's coverage tool prints as its headline. */
+function totals(coverage: Coverage): { executable: number; covered: number } {
+  let executable = 0
+  let covered = 0
+  for (const fc of coverage.values()) {
+    executable += fc.covered.length + fc.uncovered.length
+    covered += fc.covered.length
+  }
+  return { executable, covered }
+}
+
+/**
+ * WHICH files the score is computed over — the question that decides every number above it.
+ *
+ * The coverage report is the authority on what was instrumented. Two rules, and only these two:
+ *
+ *   1. A file the report knows is ALWAYS in, whatever the file walk thinks. `walk` skips
+ *      directories by name (`coverage/`, `dist/`, `bin/`, `out/`, `build/`), and real source lives
+ *      in some of them — `src/coverage/lcov.ts` here. Dropping a measured file removes it from the
+ *      numerator AND the denominator, and the score stops matching the report it came from.
+ *   2. A product file the report does NOT know is in as fully uncovered — the rule gap.ts rests on,
+ *      because jest and pytest only instrument what a test imported — UNLESS it sits in a top-level
+ *      directory the report never mentions at all. `scripts/`, `fixtures/`, `tools/`: no coverage
+ *      config reached them, they are absent from the tool's own total, and charging them makes the
+ *      two numbers irreconcilable.
+ *
+ * Known ceiling, and it runs in the flattering direction: a project whose tests import nothing from
+ * a whole top-level directory has that directory excluded rather than charged. The count is stated
+ * in the denominator sentence for exactly that reason — an excluded directory is visible, never
+ * silent. An empty report measured nothing, so nothing is excluded.
+ */
+function universe(files: string[], coverage: Coverage): { measured: string[]; unreachable: string[] } {
+  if (coverage.size === 0) return { measured: files, unreachable: [] }
+
+  const roots = new Set([...coverage.keys()].map(topDirectory))
+  const measured: string[] = []
+  const unreachable: string[] = []
+
+  for (const file of files) {
+    if (coverage.has(file) || roots.has(topDirectory(file))) measured.push(file)
+    else unreachable.push(file)
+  }
+
+  return { measured, unreachable }
+}
+
+/** `src/coverage/lcov.ts` → `src`; a file at the repo root → `''`, its own root. */
+function topDirectory(file: string): string {
+  const slash = file.indexOf('/')
+  return slash === -1 ? '' : file.slice(0, slash)
 }
 
 /** Rigor = 100 × clean test files ÷ test files. Clean = asserts something, disables nothing. */
@@ -260,7 +365,7 @@ function scoreRigor(input: AuditInput, testFiles: string[]): Scored {
   }
 
   // no test file means no clean test file — 0 is the measurement, not a missing one
-  return { score: testFiles.length === 0 ? 0 : percent(clean, testFiles.length), checks }
+  return { score: testFiles.length === 0 ? 0 : scoreRatio(clean, testFiles.length), checks }
 }
 
 /** matches whose text says "every other test in this file is now disabled" */
@@ -279,8 +384,13 @@ function scorePyramid(input: AuditInput, productFiles: string[], profile: Profil
     product.set(kind, (product.get(kind) ?? 0) + lines(file, input).executable)
   }
 
+  // the SAME universe the denominator is drawn from. `inspect` ranks a gap in any product file it
+  // can see, including the directories `universe` leaves out — counting those lines here would put
+  // two answers to "how many lines are untested" in one document.
+  const scope = new Set(productFiles)
   const gaps = new Map<TestKind, number>()
   for (const gap of input.inspection.gaps) {
+    if (!scope.has(gap.file)) continue
     gaps.set(gap.kind, (gaps.get(gap.kind) ?? 0) + gap.lines.length)
   }
 
@@ -313,7 +423,7 @@ function scorePyramid(input: AuditInput, productFiles: string[], profile: Profil
     })
   }
 
-  return { score: total === 0 ? 100 : round(100 * (1 - weighted / total)), checks }
+  return { score: total === 0 ? 100 : score(100 * (1 - weighted / total)), checks }
 }
 
 /**
@@ -341,18 +451,41 @@ function matchAll(code: string, pattern: RegExp): string[] {
   return code.match(global) ?? []
 }
 
-/** the caller's file order is a filesystem artifact, not a contract */
+/**
+ * The caller's file order is a filesystem artifact, not a contract — and it hands the same file
+ * over twice (the walk and the coverage report both know `src/math.ts`), which would charge its
+ * lines twice.
+ *
+ * The dedupe is load-bearing and tested. The `.sort()` is not observable from any output today:
+ * every consumer below sums or counts over the whole list, so no test can distinguish it. It stays
+ * as insurance for the first consumer that prints a file list.
+ */
 function unique(files: string[]): string[] {
   return [...new Set(files)].sort()
 }
 
-/** THE rounding rule: Math.round, applied once, at the end. Every score is an integer 0-100. */
-function round(value: number): number {
-  return Math.round(Math.min(100, Math.max(0, value)))
+/**
+ * THE rounding rule for a SCORE: floor, applied once, at the end. Every score is an integer 0-100.
+ *
+ * Floor, never round — the same rule `bar()` draws by, for the same reason: the number must never
+ * claim more than was measured. 99.95% rounds to a `Coverage 100` printed directly above a FAILED
+ * line reading "5 of 10,000 executable lines are untested". A 100 means nothing was missed.
+ */
+function score(value: number): number {
+  return Math.floor(Math.min(100, Math.max(0, value)))
 }
 
+function scoreRatio(part: number, whole: number): number {
+  return whole === 0 ? 0 : score(100 * (part / whole))
+}
+
+/**
+ * The percentage INSIDE a sentence — rounded, not floored, because the sentence states its own
+ * numerator and denominator right beside it ("31 of 82 product files (38%)"). Nothing is derived
+ * from this number; it is a reading aid for figures the reader already has.
+ */
 function percent(part: number, whole: number): number {
-  return whole === 0 ? 0 : round(100 * (part / whole))
+  return whole === 0 ? 0 : Math.round(Math.min(100, Math.max(0, 100 * (part / whole))))
 }
 
 /** thousands separator, locale pinned so the same input renders the same bytes anywhere */

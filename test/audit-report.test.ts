@@ -79,9 +79,12 @@ describe('renderAuditText', () => {
 
     // 100 fills the whole bar; the constant is the width
     expect(text).toContain(`Setup      100  ${'█'.repeat(20)}`)
-    expect(text).toMatch(/Coverage {4}48 {2}█+/)
-    expect(text).toMatch(/Rigor {7}71 {2}█+/)
-    expect(text).toMatch(/Pyramid {5}55 {2}█+/)
+    // 48 of 100 over 20 cells = 9.6 cells: 9 whole blocks and the eighth that is left, floored.
+    // Rounding to 10 would draw more than was measured; without the eighths a 48 and a 52 draw
+    // the same bar.
+    expect(text).toContain(`Coverage    48  ${'█'.repeat(9)}▌`)
+    expect(text).toContain(`Rigor       71  ${'█'.repeat(14)}▏`)
+    expect(text).toContain(`Pyramid     55  ${'█'.repeat(11)}`)
   })
 
   it('never mixes FAILED with PASSED, and shows every failed line above the passed block', () => {
@@ -145,6 +148,26 @@ describe('renderAuditText', () => {
   })
 
   describe('unmeasurable', () => {
+    // 50 × 0.20 = 10 printed as `overall`, directly above a sentence saying the other three are
+    // not in it. A reader with a calculator cannot get from 50 to 10 without assuming exactly what
+    // the sentence forbids — so no overall is printed at all.
+    it('prints no overall score when three of the four categories were never computed', () => {
+      const text = renderAuditText(unmeasurable(), inspection())
+
+      expect(text).not.toMatch(/^\s+\d+\s+overall$/m)
+      expect(text).toContain('overall not computed')
+      expect(text).not.toContain('are not in the score')
+    })
+
+    // Setup 50 with nothing under it cannot be re-derived. The two checks worth 25 each were
+    // computed and thrown away before the PASSED block was ever reached.
+    it('shows the passed checks Setup was computed from', () => {
+      const text = renderAuditText(unmeasurable(), inspection())
+
+      expect(text).toContain('PASSED')
+      expect(text).toContain('vitest is named in the manifest')
+    })
+
     it('shows Setup and points at redbar init', () => {
       const text = renderAuditText(unmeasurable(), inspection())
 
@@ -166,8 +189,38 @@ describe('renderAuditText', () => {
     })
   })
 
-  it('is deterministic — the same audit renders byte-identical output', () => {
-    expect(renderAuditText(scored(), inspection())).toBe(renderAuditText(scored(), inspection()))
+  // The whole document, byte for byte. Determinism is the architectural invariant — a report that
+  // shuffles cannot be diffed in a PR and makes the CI gate flap — and every column, every bar and
+  // every blank line here is part of the contract a reader re-derives the numbers from.
+  it('renders the whole report byte for byte', () => {
+    expect(renderAuditText(scored(), inspection())).toBe(
+      [
+        'redbar audit · TypeScript · vitest · a backend project',
+        '',
+        '   62   overall',
+        '',
+        `  Setup      100  ${'█'.repeat(20)}`,
+        `  Coverage    48  ${'█'.repeat(9)}▌`,
+        `  Rigor       71  ${'█'.repeat(14)}▏`,
+        `  Pyramid     55  ${'█'.repeat(11)}`,
+        '',
+        '  Pyramid weighs the layers heaviest first: integration, unit, e2e.',
+        '',
+        'FAILED',
+        '  Coverage   31 of 82 product files (38%) have no coverage at all',
+        '  Coverage   1,204 of 2,310 executable lines are untested',
+        '  Rigor      4 of 82 test files assert nothing',
+        '  Pyramid    integration weighs ×3 — 810 of 1,000 lines (81%) untested',
+        '',
+        'PASSED',
+        `  Setup      82 test file(s) match ${ts.testPattern}`,
+        '  Setup      vitest is named in the manifest',
+        '',
+        'From coverage/lcov.info, the git-tracked file tree and the manifest. No language model produced these numbers.',
+        '',
+        '  → redbar inspect --all    for the symbols, ranked by criticality',
+      ].join('\n'),
+    )
   })
 })
 
@@ -203,11 +256,26 @@ describe('renderAuditMarkdown', () => {
     expect(md).not.toContain('| Coverage |')
     expect(md).not.toContain('| Rigor |')
     expect(md).not.toContain('| Pyramid |')
+    // the headline is a score out of 100 — there is none when three categories were not computed
+    expect(md).toContain('**overall not computed**')
+    expect(md).not.toContain('/ 100')
+    expect(md).toContain('vitest is named in the manifest')
   })
 
-  it('is deterministic', () => {
-    expect(renderAuditMarkdown(scored(), inspection())).toBe(
-      renderAuditMarkdown(scored(), inspection()),
+  // the table, byte for byte: fixed column order, right-aligned score, the same bar the terminal
+  // draws. A PR comment that reshuffles between pushes cannot be read as a diff.
+  it('renders the category table byte for byte', () => {
+    const md = renderAuditMarkdown(scored(), inspection())
+
+    expect(md).toContain(
+      [
+        '| category | score | |',
+        '| --- | --: | --- |',
+        `| Setup | 100 | \`${'█'.repeat(20)}\` |`,
+        `| Coverage | 48 | \`${'█'.repeat(9)}▌\` |`,
+        `| Rigor | 71 | \`${'█'.repeat(14)}▏\` |`,
+        `| Pyramid | 55 | \`${'█'.repeat(11)}\` |`,
+      ].join('\n'),
     )
   })
 })
@@ -242,11 +310,18 @@ describe('renderAuditHtml', () => {
     expect(html).not.toContain('<div class="cat">Coverage</div>')
     expect(html).not.toContain('<div class="cat">Pyramid</div>')
     expect(html).toContain('redbar init')
+    expect(html).toContain('<div class="overall"><span>overall not computed</span></div>')
+    expect(html).toContain('vitest is named in the manifest')
   })
 
-  it('is deterministic', () => {
-    expect(renderAuditHtml(scored(), inspection(), 'repo')).toBe(
-      renderAuditHtml(scored(), inspection(), 'repo'),
-    )
+  // the score and the bar width are the same measurement drawn twice — a fill that does not match
+  // the number beside it is the one lie the scorecard cannot afford
+  it('draws each bar at exactly the score it prints', () => {
+    const html = renderAuditHtml(scored(), inspection(), 'repo')
+
+    expect(html).toContain('<div class="n">48</div>')
+    expect(html).toContain('<div class="track"><div class="fill" style="width:48%"></div></div>')
+    expect(html).toContain('<div class="n">100</div>')
+    expect(html).toContain('<div class="track"><div class="fill" style="width:100%"></div></div>')
   })
 })

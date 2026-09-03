@@ -75,7 +75,8 @@ export function inspect(root: string, opts: InspectOptions = {}): Inspection {
 
   const base = opts.all ? WHOLE_REPO : (opts.base ?? (opts.changed ? '' : detectBase(root)))
   const changed =
-    opts.changed ?? (opts.all ? everyLine(root, language, readSource) : changedLines(root, base))
+    opts.changed ??
+    (opts.all ? everyLine(root, language, readSource, coverage) : changedLines(root, base))
 
   return {
     language,
@@ -97,19 +98,32 @@ export const WHOLE_REPO = '(whole repository)'
  * test ever imported never appears in the report at all, and that file is the biggest gap there
  * is. Reading the universe from the report would make the worst gaps the only invisible ones.
  * Everything downstream — the crossing, the symbol attribution, the ranking — is untouched.
+ *
+ * The tree is not enough on its own either: `walk` skips whole directories by NAME (`coverage/`,
+ * `dist/`, `out/`, `bin/`, `build/`) and real source lives in some of them. A file the report
+ * measured is code that was instrumented, whatever the directory is called, so the two sources of
+ * files are unioned.
  */
-function everyLine(root: string, language: Language, readSource: SourceReader): ChangedLines {
+function everyLine(
+  root: string,
+  language: Language,
+  readSource: SourceReader,
+  coverage: Coverage,
+): ChangedLines {
   const changed: ChangedLines = new Map()
 
-  for (const file of walk(root)) {
+  for (const file of new Set([...walk(root), ...coverage.keys()])) {
     if (!isProductFile(file, language)) continue
 
     const source = readSource(file)
     if (source === null) continue
 
+    // A blank line is not executable: no instrumenter emits one, and for a file the report never
+    // saw this list IS the uncovered set. Counting blanks let the untested-line count in one part
+    // of the audit outrun the executable-line count in another, on the same report.
     changed.set(
       file,
-      source.split('\n').map((_, i) => i + 1),
+      source.split('\n').flatMap((line, i) => (line.trim() === '' ? [] : [i + 1])),
     )
   }
 

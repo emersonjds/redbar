@@ -67,6 +67,16 @@ describe('parseLcov', () => {
     })
   })
 
+  // v8, coverlet and llvm all emit a record for a file they instrumented and found nothing
+  // executable in (a file of `export type`). Dropping that record makes it indistinguishable from
+  // a file no test ever imported — and the consumers charge that one as fully uncovered.
+  it('keeps a record with no DA line as a MEASURED file with nothing executable', () => {
+    const cov = parseLcov('SF:src/types.ts\nFNF:0\nLF:0\nLH:0\nend_of_record\n')
+
+    expect(cov.get('src/types.ts')).toEqual({ file: 'src/types.ts', covered: [], uncovered: [] })
+    expect(cov.size).toBe(1)
+  })
+
   it('strips the root only at a path boundary — a sibling directory is not a prefix', () => {
     const cov = parseLcov('SF:/home/user/proj-ui/src/a.ts\nDA:1,0\nend_of_record\n', ROOT)
     expect(cov.has('-ui/src/a.ts')).toBe(false)

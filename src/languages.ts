@@ -295,7 +295,15 @@ export const LANGUAGES: Language[] = [
       /^\s*public\s+(?:static\s+)?function\s+(\w+)/,
     ],
     assertionPatterns: [/\bassert\w*\s*\(/],
-    disabledTestPatterns: [/\bmarkTest(Skipped|Incomplete)\s*\(/, /->\s*(skip|only)\s*\(/],
+    // Pest spells a disabled test as a chain terminator — `->skip()`, `->skip('reason')`,
+    // `->only()`. The argument is what separates it from Eloquent: `$query->skip(10)` and
+    // `$user->only(['id'])` are ordinary Laravel code, and `stripNonCode` has already erased the
+    // reason string by the time Rigor reads the file.
+    disabledTestPatterns: [
+      /\bmarkTest(Skipped|Incomplete)\s*\(/,
+      /->\s*skip\s*\(\s*(?:\)|['"])/,
+      /->\s*only\s*\(\s*\)/,
+    ],
     testLibs: {
       integration: ['phpunit/phpunit', 'guzzlehttp/guzzle'],
       e2e: ['@playwright/test'],
@@ -387,7 +395,9 @@ export const LANGUAGES: Language[] = [
     // mocks/ (MSW request handlers) and *.gen.ts (a generated TanStack routeTree) both ranked as
     // gaps on a real admin front-end — the same class of noise: test scaffolding and generated code.
     nonProductPattern:
-      /(^|\/)(__tests__|__mocks__|mocks|e2e|public)\/|\.(test|spec)\.[jt]sx?$|\.d\.ts$|\.gen\.[jt]sx?$|(^|\/)[\w.-]*\.(config|setup|resolver)\.[jt]sx?$|(^|\/)(jest|vitest|metro|babel|eslint)\.[\w.]*[jt]sx?$/,
+      // the test branch is `testPattern` verbatim — a file the runner collects that this pattern
+      // calls product code is graded for its assertions AND charged as untested source
+      /(^|\/)(__tests__|__mocks__|mocks|e2e|public)\/|\.(?:[\w-]+-)?(?:test|spec)\.[cm]?[jt]sx?$|\.d\.ts$|\.gen\.[jt]sx?$|(^|\/)[\w.-]*\.(config|setup|resolver)\.[jt]sx?$|(^|\/)(jest|vitest|metro|babel|eslint)\.[\w.]*[jt]sx?$/,
     // What vitest and jest collect: `*.test.*` and `*.spec.*`. The qualifier is `[\w-]+-` and not
     // `[\w-]*` so that `app.e2e-spec.ts` (the NestJS default) is collected while `release.latest.ts`
     // is not — the hyphen is what separates a qualified spec from a word that merely ends in one.

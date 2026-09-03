@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  auditInput,
   authorizationOutcome,
   canonical,
   dirtyTreeError,
@@ -8,7 +9,10 @@ import {
   renderExecutePlan,
   resolveRun,
 } from '../src/cli.js'
+import type { Inspection } from '../src/engine.js'
 import { bandReason, scoreArithmetic } from '../src/explain.js'
+import { byId } from '../src/languages.js'
+import type { Coverage, FileCoverage } from '../src/types.js'
 
 describe('canonical', () => {
   it('expande os atalhos de uma letra, estilo cargo/npm', () => {
@@ -167,5 +171,49 @@ describe('renderExecutePlan', () => {
 
   it('the why is the same string every run — nothing here is model-authored', () => {
     expect(renderExecutePlan([critical])).toBe(renderExecutePlan([critical]))
+  })
+})
+
+describe('auditInput', () => {
+  const ts = byId('ts')!
+  const inspection = (coverage: Coverage): Inspection => ({
+    language: ts,
+    runner: ts.runners[0]!,
+    base: '(whole repository)',
+    gaps: [],
+    coverage,
+  })
+  const entry = (file: string): [string, FileCoverage] => [
+    file,
+    { file, covered: [1], uncovered: [] },
+  ]
+
+  // `walk` skips whole directories by NAME — `coverage/`, `dist/`, `out/`, `bin/`, `build/` —
+  // and real source lives in some of them. A file the report measured that never reaches the
+  // audit is dropped from the numerator AND the denominator, and the score stops matching the
+  // report it was read from.
+  it('adds the files the coverage report measured that the walk never yielded', () => {
+    const coverage: Coverage = new Map([entry('src/coverage/lcov.ts'), entry('src/math.ts')])
+    const { productFiles } = auditInput(['src/math.ts'], inspection(coverage), () => null, '{}')
+
+    expect(productFiles).toContain('src/coverage/lcov.ts')
+    expect(productFiles).toContain('src/math.ts')
+  })
+
+  // a file counted as a test AND as product code is charged as fully uncovered on top of being
+  // graded for its assertions
+  it('never counts one file as both a test and product code', () => {
+    const files = ['src/app.e2e-spec.ts', 'test/math.test.mjs', 'src/math.ts']
+    const { testFiles, productFiles } = auditInput(files, inspection(new Map()), () => null, '{}')
+
+    expect(testFiles).toEqual(files.slice(0, 2))
+    expect(productFiles).toEqual(['src/math.ts'])
+  })
+
+  it('never puts a test file in the denominator, even when the report measured it', () => {
+    const coverage: Coverage = new Map([entry('test/math.test.ts')])
+    const { productFiles } = auditInput([], inspection(coverage), () => null, '{}')
+
+    expect(productFiles).toEqual([])
   })
 })

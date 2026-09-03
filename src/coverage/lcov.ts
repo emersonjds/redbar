@@ -1,5 +1,5 @@
 import type { Coverage } from '../types.js'
-import { addLine, type LineHits, toCoverage } from './merge.js'
+import { addFile, addLine, type LineHits, toCoverage } from './merge.js'
 
 /** `SF:` can be absolute (cargo-llvm-cov) or relative; `root`, when given, is stripped. */
 export function parseLcov(text: string, root = ''): Coverage {
@@ -10,6 +10,9 @@ export function parseLcov(text: string, root = ''): Coverage {
     const line = raw.trim()
     if (line.startsWith('SF:')) {
       current = normalize(line.slice(3), root)
+      // the record itself is the measurement — `SF:` with no `DA:` under it (`LF:0`) is a file
+      // the instrumenter read and found nothing executable in, not a file it never saw
+      addFile(acc, current)
     } else if (line.startsWith('DA:') && current) {
       const [nr, hits] = line.slice(3).split(',')
       const n = Number(nr)

@@ -56,6 +56,16 @@ describe('language registry', () => {
       expect(ts.nonProductPattern.test('src/mocks-helper.ts')).toBe(false)
       expect(ts.nonProductPattern.test('src/gen.ts')).toBe(false)
     })
+
+    // A file the runner collects that this pattern calls product code is counted twice: graded for
+    // its assertions AND charged as untested source. The two patterns answer different questions,
+    // but never about the same file.
+    it('excludes every file testPattern collects', () => {
+      for (const file of ['src/app.e2e-spec.ts', 'test/math.test.mjs', 'src/a.spec.cts']) {
+        expect(ts.testPattern.test(file), `${file} is collected`).toBe(true)
+        expect(ts.nonProductPattern.test(file), `${file} is also product code`).toBe(true)
+      }
+    })
   })
 
   /**
@@ -138,6 +148,30 @@ describe('language registry', () => {
         expect(runner.detect, `${where} has no detect pattern`).toBeInstanceOf(RegExp)
       }
     }
+  })
+
+  /**
+   * `$user->only(['id'])` and `$query->skip(10)` are Eloquent, and they appear in every Laravel
+   * codebase. A bare `->skip(`/`->only(` accuses a normal repository of disabling its tests, which
+   * is the harshest sentence the audit can print. Pest spells both as a chain terminator: no
+   * argument, or a reason string — and `stripNonCode` erases the string before Rigor reads it, so
+   * both spellings have to match.
+   */
+  describe('the php disabled-test patterns read Pest, not Eloquent', () => {
+    const php = byId('php')!
+    const disabled = (code: string) => php.disabledTestPatterns.some((p) => p.test(code))
+
+    it('reads a disabled Pest test', () => {
+      expect(disabled("it('adds', fn () => expect(1)->toBe(1))->skip('flaky on ci');")).toBe(true)
+      expect(disabled("it('adds', fn () => expect(1)->toBe(1))->skip();")).toBe(true)
+      expect(disabled("it('adds', fn () => expect(1)->toBe(1))->only();")).toBe(true)
+      expect(disabled('$this->markTestSkipped();')).toBe(true)
+    })
+
+    it('does not accuse an Eloquent query of disabling a test', () => {
+      expect(disabled("$data = $user->only(['id', 'name']);")).toBe(false)
+      expect(disabled('$page = $query->skip(10)->take(5)->get();')).toBe(false)
+    })
   })
 
   it('byId finds the language and returns null for an unknown id', () => {

@@ -1,5 +1,5 @@
 import type { Coverage } from '../types.js'
-import { addLine, type LineHits, toCoverage } from './merge.js'
+import { addFile, addLine, type LineHits, toCoverage } from './merge.js'
 
 // ponytail: regex instead of an XML parser. JaCoCo output is machine-generated, flat, and
 // namespace-free — worth the ~30 lines over a dependency. If a real report ever fails to
@@ -23,6 +23,9 @@ export function parseJacoco(xml: string, sourceRoots: string[] = ['src/main/java
     for (const [, name, sfBody] of (pkgBody ?? '').matchAll(SOURCEFILE)) {
       for (const root of roots) {
         const file = [root, pkg, name].filter(Boolean).join('/')
+        // the <sourcefile> element is the measurement — see addFile
+        addFile(acc, file)
+
         for (const [, nr, ci] of (sfBody ?? '').matchAll(LINE)) {
           addLine(acc, file, Number(nr), Number(ci) > 0)
         }

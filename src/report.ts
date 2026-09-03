@@ -618,9 +618,18 @@ const HANDOFF_WHY = 'for the symbols, ranked by criticality'
 /** Setup === 0. One instruction, and nothing else — scoring coverage for someone with no tests is
  *  a correct answer to a question they did not ask. */
 const NO_TESTS = [
-  'This repository has no tests. Coverage, Rigor and Pyramid are not in the score',
-  'above. They are unmeasurable, not zero.',
+  'This repository has no tests. Coverage, Rigor and Pyramid are unmeasurable, not zero,',
+  'so no overall score is computed — one category out of four is not comparable to a repo',
+  'where all four were measured.',
 ]
+
+/**
+ * What stands where the overall score would be when three of the four categories were never
+ * computed. Printing the weighted Setup score there — 50 × 0.20 = 10 — puts a number above a
+ * paragraph saying the other three are not in it, and no reader can get from 50 to 10 without
+ * assuming exactly what that paragraph forbids.
+ */
+const NO_OVERALL = 'overall not computed'
 const INIT = 'redbar init'
 const INIT_WHY = 'to set up a runner and a coverage report'
 
@@ -630,7 +639,7 @@ export function renderAuditText(audit: Audit, inspection: Inspection): string {
   const out = [
     `redbar audit · ${language.name} · ${runner.name} · ${profileLabel(audit.profile)}`,
     '',
-    `  ${String(audit.overall).padStart(3)}   overall`,
+    audit.unmeasurable ? `  ${NO_OVERALL}` : `  ${String(audit.overall).padStart(3)}   overall`,
     '',
   ]
 
@@ -663,13 +672,15 @@ export function renderAuditText(audit: Audit, inspection: Inspection): string {
         ]
 
   out.push(...block('FAILED', failedChecks(audit)))
+  // before the unmeasurable branch returns: the checks Setup was computed from are worth 25 points
+  // each, and a Setup of 50 with nothing under it cannot be re-derived by the reader
+  out.push(...block('PASSED', passedChecks(audit)))
 
   if (audit.unmeasurable) {
     out.push('', ...NO_TESTS, '', auditProvenance(inspection, ''), '', `  → ${INIT}    ${INIT_WHY}`)
     return out.join('\n')
   }
 
-  out.push(...block('PASSED', passedChecks(audit)))
   out.push('', auditProvenance(inspection, ''), '', `  → ${HANDOFF}    ${HANDOFF_WHY}`)
 
   return out.join('\n')
@@ -687,7 +698,7 @@ export function renderAuditMarkdown(audit: Audit, inspection: Inspection): strin
     AUDIT_MARKER,
     '## redbar audit',
     '',
-    `**${audit.overall} / 100** — ${language.name} · ${runner.name} · ${profileLabel(audit.profile)}`,
+    `**${audit.unmeasurable ? NO_OVERALL : `${audit.overall} / 100`}** — ${language.name} · ${runner.name} · ${profileLabel(audit.profile)}`,
     '',
   ]
 
@@ -719,13 +730,13 @@ export function renderAuditMarkdown(audit: Audit, inspection: Inspection): strin
         ]
 
   out.push(...block('Failed', failedChecks(audit)))
+  out.push(...block('Passed', passedChecks(audit)))
 
   if (audit.unmeasurable) {
     out.push(NO_TESTS.join(' '), '', `<sub>${auditProvenance(inspection)}</sub>`, '', `\`${INIT}\` ${INIT_WHY}.`)
     return out.join('\n')
   }
 
-  out.push(...block('Passed', passedChecks(audit)))
   out.push(`<sub>${auditProvenance(inspection)}</sub>`, '', `\`${HANDOFF}\` ${HANDOFF_WHY}.`)
 
   return out.join('\n')
@@ -800,7 +811,7 @@ export function renderAuditHtml(audit: Audit, inspection: Inspection, repoName: 
 <h1>red<span class="bar">bar</span> audit</h1>
 <div class="sub"><b>${esc(repoName)}</b> · ${esc(language.name)} · ${esc(runner.name)} ·
   ${esc(profileLabel(audit.profile))}</div>
-<div class="overall">${audit.overall} <span>overall</span></div>
+<div class="overall">${audit.unmeasurable ? `<span>${NO_OVERALL}</span>` : `${audit.overall} <span>overall</span>`}</div>
 <div class="scores">${measuredCategories(audit).map(scoreRow).join('')}
 </div>
 ${explainsPyramid(audit) ? `<div class="sub">${esc(pyramidRule(audit.profile))}</div>` : ''}
@@ -815,7 +826,7 @@ ${
     : ''
 }
 ${list('Failed', failedChecks(audit))}
-${audit.unmeasurable ? '' : list('Passed', passedChecks(audit))}
+${list('Passed', passedChecks(audit))}
 <div class="next">${
     audit.unmeasurable
       ? `${esc(NO_TESTS.join(' '))} <code>${INIT}</code> ${INIT_WHY}.`

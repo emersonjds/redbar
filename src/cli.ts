@@ -283,33 +283,64 @@ function runInspect(argv: string[]): void {
  * `inspect` there is no `--base`/`--all` to take. Nothing is written to `.redbar/`: that directory
  * is the agent-facing gap contract, and a scorecard is not a gap list.
  */
+/**
+ * The pure half of `runAudit`: the file tree, the report and the manifest in, the `AuditInput` out.
+ * Exported because this is where the DENOMINATOR is decided, and the denominator is the number
+ * everything else in the audit divides by.
+ *
+ * Two rules, one of them not obvious:
+ *
+ *   - a file is a test or product code, never both. `testPattern` and `nonProductPattern` answer
+ *     different questions and are allowed to disagree; when they do, a file graded for its
+ *     assertions would ALSO be charged as untested product code.
+ *   - every file the coverage report measured is product code, whatever the walk yielded. `walk`
+ *     skips directories by name (`coverage/`, `dist/`, `out/`, `bin/`, `build/`) and real source
+ *     lives in some of them — dropping a measured file removes it from the numerator and the
+ *     denominator at once, and the score stops matching the report it came from. `audit` dedupes.
+ */
+export function auditInput(
+  files: Iterable<string>,
+  inspection: Inspection,
+  readSource: (file: string) => string | null,
+  manifest: string,
+): AuditInput {
+  const { language } = inspection
+  const testFiles: string[] = []
+  const productFiles: string[] = []
+
+  for (const file of files) {
+    if (language.testPattern.test(file)) testFiles.push(file)
+    else if (isProductFile(file, language)) productFiles.push(file)
+  }
+
+  for (const file of inspection.coverage.keys()) {
+    if (!language.testPattern.test(file) && isProductFile(file, language)) productFiles.push(file)
+  }
+
+  return {
+    inspection,
+    coverage: inspection.coverage,
+    testFiles,
+    productFiles,
+    readSource,
+    manifest,
+  }
+}
+
 function runAudit(argv: string[]): void {
   const { positional, flags } = parseArgs(argv, new Set(['html', 'md']))
   const root = positional[0] ?? '.'
 
   const inspection = inspect(root, { all: true, run: flags['no-run'] !== true })
 
-  const testFiles: string[] = []
-  const productFiles: string[] = []
-  for (const file of walk(root)) {
-    if (inspection.language.testPattern.test(file)) testFiles.push(file)
-    if (isProductFile(file, inspection.language)) productFiles.push(file)
-  }
-
   const readSource = (file: string): string | null => {
     const p = join(root, file)
     return existsSync(p) ? readFileSync(p, 'utf8') : null
   }
 
-  const input: AuditInput = {
-    inspection,
-    coverage: inspection.coverage,
-    testFiles,
-    productFiles,
-    readSource,
-    manifest: readManifest(root, inspection.language),
-  }
-  const result = audit(input)
+  const result = audit(
+    auditInput(walk(root), inspection, readSource, readManifest(root, inspection.language)),
+  )
 
   console.log(renderAuditText(result, inspection))
 

@@ -208,6 +208,16 @@ describe('findGaps', () => {
     })
   })
 
+  // The counterpart of the absent-file rule: a file the instrumenter MEASURED and found no
+  // executable line in (a file of `export type`) carries an empty entry, and an empty entry is a
+  // measurement — there is nothing to test in it, so it is never a gap.
+  it('never reports a gap for a file measured with no executable line', () => {
+    const coverage: Coverage = new Map([['src/types.ts', { file: 'src/types.ts', covered: [], uncovered: [] }]])
+    const changed: ChangedLines = new Map([['src/types.ts', [1, 2, 3]]])
+
+    expect(findGaps(coverage, changed, ts, () => 'export type A = string\n')).toEqual([])
+  })
+
   // architectural invariant: a report that reshuffles between identical runs cannot be
   // diffed in a PR, and the CI gate would flap
   it('ranks deterministically, including on a score tie', () => {

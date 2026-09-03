@@ -53,7 +53,7 @@ Usage:
   redbar explain [symbol] [--all] [--path <dir>] [--base <ref>]  where a number came from
   redbar compare [<runA> <runB>]                                 diff two kept runs — the progress, for a boss
   redbar inspect [path] [--all] [--base <ref>] [--json] [--html <file>] [--md <file>] [--out <dir>] [--top <n>]
-  redbar audit [path] [--html <file>] [--md <file>]              the whole project's test health, scored 0-100
+  redbar audit [path] [--html <file>] [--md <file>] [--pdf <file>]  the whole project's test health, scored 0-100
   redbar mcp [path]                                              MCP server on stdio
   redbar mcp-config [client] [--local]                          paste-ready MCP registration (npx; --local for a clone)
   redbar init [path]
@@ -328,7 +328,7 @@ export function auditInput(
 }
 
 function runAudit(argv: string[]): void {
-  const { positional, flags } = parseArgs(argv, new Set(['html', 'md']))
+  const { positional, flags } = parseArgs(argv, new Set(['html', 'md', 'pdf']))
   const root = positional[0] ?? '.'
 
   const inspection = inspect(root, { all: true, run: flags['no-run'] !== true })
@@ -350,6 +350,16 @@ function runAudit(argv: string[]): void {
 
   if (typeof flags.md === 'string') {
     writeFileSync(flags.md, renderAuditMarkdown(result, inspection))
+  }
+
+  // The scorecard is the one output someone forwards to a person who cannot run the tool, so it
+  // gets the same PDF path briefing and compare already have — the browser on the machine renders
+  // the HTML this command already produces. No browser, no PDF, no error: the html is still there.
+  if (typeof flags.pdf === 'string') {
+    const html = renderAuditHtml(result, inspection, basename(resolve(root)))
+    if (!htmlToPdf(html, resolve(flags.pdf))) {
+      process.stderr.write(`redbar: no browser found to print ${flags.pdf} — open the --html instead\n`)
+    }
   }
 }
 

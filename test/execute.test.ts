@@ -286,6 +286,23 @@ describe('executeGaps — the agent misbehaves', () => {
     expect(attempts[0]).toMatchObject({ verdict: 'no-output', line: 10 })
   })
 
+  it('carries a thrown non-Error as its own string, not "undefined"', () => {
+    const attempts = executeGaps(
+      [gap()],
+      ts,
+      {},
+      effects({
+        // a thrown string, not an Error — not every process rejects with an Error instance
+        runAgent: () => {
+          throw 'ETIMEDOUT: agent killed'
+        },
+      }),
+      source,
+    )
+
+    expect(attempts[0]).toMatchObject({ verdict: 'timeout', note: 'ETIMEDOUT: agent killed' })
+  })
+
   it('marks timeout when the agent throws, and carries on to the next gap using ITS OWN output', () => {
     const gaps = [gap(), gap({ file: 'src/other.ts', symbol: 'other' })]
     let first = true
@@ -331,6 +348,18 @@ describe('buildPrompt', () => {
   it('names the canonical standard when no convention file exists for the layer', () => {
     const prompt = buildPrompt(gap({ kind: 'e2e' }), ts, {}, source())
     expect(prompt).toContain(ts.standards.e2e.url)
+  })
+
+  it('falls back to the file path and "(none)" when the gap has no attributed symbol', () => {
+    const prompt = buildPrompt(gap({ symbol: null }), ts, {}, source())
+
+    expect(prompt).toContain('Write ONE unit test for `src/calc.ts`')
+    expect(prompt).toContain('symbol: (none)')
+  })
+
+  it('marks the source unavailable rather than printing an empty code block', () => {
+    const prompt = buildPrompt(gap(), ts, {}, null)
+    expect(prompt).toContain('(source unavailable)')
   })
 
   it('carries ONE gap, never the whole list — the OTHER gap\'s identity never leaks into this prompt', () => {

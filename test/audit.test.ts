@@ -258,6 +258,63 @@ describe('audit', () => {
       )
     })
 
+    // a coverage-report key with no `/` is a file at the repo root — its own top-level root,
+    // same as any directory name would be
+    it('treats a coverage-report key with no directory as its own top-level root', () => {
+      const result = audit(
+        input({
+          coverage: coverageOf({
+            'src/math.ts': { covered: [1], uncovered: [] },
+            // root-level file the report measured but that is not product code
+            'index.ts': { covered: [1], uncovered: [] },
+          }),
+        }),
+      )
+
+      expect(result.scores.coverage).toBe(100)
+      expect(result.checks.map((c) => c.detail)).toContainEqual(
+        'left out: 1 line(s) (1 covered) in 1 file(s) the report measured that are not product code',
+      )
+    })
+
+    // both halves of the "left out" sentence fire together: a file the report measured that is
+    // not product code, AND a product file in a directory the report never touched at all
+    it('joins both halves of the left-out sentence with "and" when both apply', () => {
+      const sources: Record<string, string> = {
+        'src/math.ts': 'export const add = (a, b) => a + b\n',
+        'scripts/release.ts': 'run()\n',
+      }
+      const result = audit(
+        input({
+          productFiles: ['src/math.ts', 'scripts/release.ts'],
+          coverage: coverageOf({
+            'src/math.ts': { covered: [1], uncovered: [] },
+            // measured, but not product code — never intersects productFiles
+            'src/routeTree.gen.ts': { covered: [1, 2], uncovered: [3] },
+          }),
+          readSource: (file) => sources[file] ?? null,
+        }),
+      )
+
+      expect(result.checks.map((c) => c.detail)).toContainEqual(
+        'left out: 3 line(s) (2 covered) in 1 file(s) the report measured that are not ' +
+          'product code and 1 product file(s) in directories the report never measured',
+      )
+    })
+
+    // readSource can return null for a product file the caller could not open; that file
+    // contributes zero executable lines rather than crashing the count
+    it('treats a product file whose source cannot be read as having zero executable lines', () => {
+      const result = audit(
+        input({ productFiles: ['src/math.ts', 'src/missing.ts'] }), // src/missing.ts is in no sources map
+      )
+
+      expect(result.scores.coverage).toBe(100)
+      expect(result.checks.map((c) => c.detail)).toContainEqual(
+        'all 1 product file(s) have at least one covered line',
+      )
+    })
+
     it('never scores 100 while a line is untested', () => {
       const uncovered = Array.from({ length: 5 }, (_, i) => 9_996 + i)
       const covered = Array.from({ length: 9_995 }, (_, i) => i + 1)
@@ -389,6 +446,25 @@ describe('audit', () => {
         '1 of 1 test files use .only — the other tests in those files never run',
       )
     })
+
+    // registry data may lack /g (matchAll adds it); a pattern that already declares one must
+    // not be doubled into an invalid regex or a different match set
+    it('does not double the g flag when a disabled-test pattern already declares one', () => {
+      const globalLanguage = { ...ts, disabledTestPatterns: [/it\.skip/g] }
+      const sources: Record<string, string> = {
+        'test/a.test.ts':
+          "it.skip('later', () => { expect(1).toBe(1) })\nit.skip('again', () => { expect(2).toBe(2) })\n",
+      }
+      const result = audit(
+        input({
+          inspection: { ...inspection(), language: globalLanguage },
+          testFiles: ['test/a.test.ts'],
+          readSource: (file) => sources[file] ?? null,
+        }),
+      )
+
+      expect(failedDetails(result)).toContainEqual('1 of 1 test files disable a test: it.skip')
+    })
   })
 
   describe('pyramid', () => {
@@ -457,6 +533,16 @@ describe('audit', () => {
 
       // 1 − (3 × 1 + 2 × 0) ÷ 5 = 40. Unclamped the unit rate would be 10, and the score 0
       expect(result.scores.pyramid).toBe(40)
+    })
+
+    // the pyramid denominator is drawn from the SAME universe as coverage's — a gap for a file
+    // outside that universe must not inflate either sum
+    it('ignores a gap for a file outside the product-file universe', () => {
+      const result = audit(
+        input({ inspection: inspection([gap('not-a-product-file.ts', 'unit', [1, 2, 3])]) }),
+      )
+
+      expect(result.scores.pyramid).toBe(100)
     })
 
     it('never divides by zero when the repository has no product file', () => {

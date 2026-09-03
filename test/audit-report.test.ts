@@ -242,6 +242,17 @@ describe('renderAuditMarkdown', () => {
     expect(md).toMatch(/No language model produced/i)
   })
 
+  it('states the score is a lower bound when the coverage report is older than the source', () => {
+    const md = renderAuditMarkdown(scored({ stale: true }), inspection())
+
+    expect(md).toContain('This score is a lower bound.')
+    expect(md).toContain(inspection().runner.coverageCommand)
+  })
+
+  it('claims no lower bound when the report is current', () => {
+    expect(renderAuditMarkdown(scored(), inspection())).not.toContain('lower bound')
+  })
+
   it('separates failed from passed and ends in the handoff command', () => {
     const md = renderAuditMarkdown(scored(), inspection())
 

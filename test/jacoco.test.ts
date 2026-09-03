@@ -51,4 +51,10 @@ describe('parseJacoco', () => {
   it('returns an empty map for XML without a package', () => {
     expect(parseJacoco('<report/>').size).toBe(0)
   })
+
+  // sourceRoots.length > 0 ? sourceRoots : [''] — an explicit empty array falls back to the
+  // report's own package/name path, with no source root prefixed
+  it('falls back to no source root when sourceRoots is an empty array', () => {
+    expect(parseJacoco(SAMPLE, []).has('com/example/Calc.java')).toBe(true)
+  })
 })

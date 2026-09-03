@@ -82,4 +82,9 @@ describe('parseLcov', () => {
     expect(cov.has('-ui/src/a.ts')).toBe(false)
     expect(cov.has('home/user/proj-ui/src/a.ts')).toBe(true)
   })
+
+  it('skips a DA: record whose line number is not an integer', () => {
+    const cov = parseLcov('SF:src/a.ts\nDA:foo,1\nDA:2,1\nend_of_record\n')
+    expect(cov.get('src/a.ts')).toEqual({ file: 'src/a.ts', covered: [2], uncovered: [] })
+  })
 })

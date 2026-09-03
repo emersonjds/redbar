@@ -134,4 +134,12 @@ describe('parseCobertura', () => {
     </coverage>`
     expect(parseCobertura(xml).get('a.py')).toEqual({ file: 'a.py', covered: [], uncovered: [9] })
   })
+
+  // a <line> element missing number or hits is skipped rather than recorded as line "undefined"
+  it('skips a line element missing the number or hits attribute', () => {
+    const xml = `<coverage>
+      <class filename="a.py"><lines><line hits="1"/><line number="7" hits="1"/></lines></class>
+    </coverage>`
+    expect(parseCobertura(xml).get('a.py')).toEqual({ file: 'a.py', covered: [7], uncovered: [] })
+  })
 })

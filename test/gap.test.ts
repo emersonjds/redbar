@@ -82,6 +82,18 @@ describe('findGaps', () => {
     })
   })
 
+  it('falls back to an empty source when readSource cannot read the gap file', () => {
+    const coverage: Coverage = new Map([
+      ['src/missing.ts', { file: 'src/missing.ts', covered: [], uncovered: [1] }],
+    ])
+    const changed: ChangedLines = new Map([['src/missing.ts', [1]]])
+
+    const gaps = findGaps(coverage, changed, ts, () => null)
+
+    // no source to extract a symbol from — an unattributed gap, not a crash
+    expect(gaps[0]).toMatchObject({ file: 'src/missing.ts', symbol: null, lines: [1] })
+  })
+
   it('a line with no symbol becomes a gap with symbol null', () => {
     const coverage: Coverage = new Map([
       ['src/x.ts', { file: 'src/x.ts', covered: [], uncovered: [1] }],

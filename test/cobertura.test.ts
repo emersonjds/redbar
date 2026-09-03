@@ -116,6 +116,17 @@ describe('parseCobertura', () => {
     })
   })
 
+  // same rule as the lcov parser: measured-and-empty is not absent
+  it('keeps a class with no line element as a measured file with nothing executable', () => {
+    const xml = `<coverage><class filename="app/types.py" name="types.py"><lines></lines></class></coverage>`
+
+    expect(parseCobertura(xml).get('app/types.py')).toEqual({
+      file: 'app/types.py',
+      covered: [],
+      uncovered: [],
+    })
+  })
+
   // XML attribute order is not guaranteed by any writer
   it('reads number and hits in either attribute order', () => {
     const xml = `<coverage>

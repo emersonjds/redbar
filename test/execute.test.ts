@@ -172,6 +172,26 @@ describe('executeGaps — gate 1: scope', () => {
     expect(revertFile).toHaveBeenCalledWith('src/calc.ts')
     expect(revertFile).not.toHaveBeenCalledWith('src/calc.test.ts')
   })
+
+  // Widening coverage.exclude in vitest.config.ts makes the gap disappear from the next report
+  // without a line of it ever being executed. It is not a test file, so gate 1 — the one gate that
+  // must never mislabel — reverts it.
+  it('reverts a touched runner config: it is not the test the agent was asked for', () => {
+    const revertFile = vi.fn()
+    const attempts = executeGaps(
+      [gap()],
+      ts,
+      {},
+      effects({
+        changedFiles: sequence([], ['src/calc.test.ts', 'vitest.config.ts']),
+        revertFile,
+      }),
+      source,
+    )
+
+    expect(revertFile).toHaveBeenCalledWith('vitest.config.ts')
+    expect(attempts[0]).toMatchObject({ verdict: 'touched-source', note: 'reverted: vitest.config.ts' })
+  })
 })
 
 describe('executeGaps — gate 1b: exactly one test file', () => {

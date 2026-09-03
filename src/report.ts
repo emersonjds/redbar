@@ -1,4 +1,5 @@
 // Pure renderers: string in/out, no disk access. Callers (scripts/*, cli.ts) do the writing.
+import type { Audit, Category, Check } from './audit.js'
 import type { Inspection } from './engine.js'
 import { bandReason, scoreArithmetic } from './explain.js'
 import { isMeasured, type Outcome, type Verdict } from './outcome.js'
@@ -549,5 +550,288 @@ ${block(
    minutes of a human's time.`,
   rankOutcomes(outcomes.filter((o) => !isMeasured(o.verdict))),
 ).replace('<div class="lead">', '<div class="lead said">')}
+`
+}
+
+/**
+ * The audit renderers. Same three audiences as the gap renderers above, same numbers in all three:
+ * terminal, PR comment, shareable HTML.
+ */
+
+/** Fixed width, stated once: two categories — and two projects — are comparable by eye only if
+ *  every bar is drawn on the same scale. No colour, no terminal width detection. */
+const BAR_WIDTH = 20
+
+// eighths of a block, so a 48 and a 52 do not draw the same bar
+const EIGHTHS = ['', '▏', '▎', '▍', '▌', '▋', '▊', '▉']
+
+/** floor, never round: the bar must never draw more than was measured */
+const bar = (score: number): string => {
+  const filled = (Math.max(0, Math.min(100, score)) / 100) * BAR_WIDTH
+  const whole = Math.floor(filled)
+  return '█'.repeat(whole) + EIGHTHS[Math.floor((filled - whole) * 8)]
+}
+
+/** Display order, fixed. `scores` is Partial on purpose — a category absent from it was never
+ *  computed, and printing a 0 there would claim a measurement that never happened. */
+const CATEGORIES: Category[] = ['setup', 'coverage', 'rigor', 'pyramid']
+
+const CATEGORY_LABEL: Record<Category, string> = {
+  setup: 'Setup',
+  coverage: 'Coverage',
+  rigor: 'Rigor',
+  pyramid: 'Pyramid',
+}
+
+// widest label + breathing room, so the scores and the details line up in one column
+const LABEL_WIDTH = 11
+
+const measuredCategories = (audit: Audit): Category[] =>
+  CATEGORIES.filter((c) => audit.scores[c] !== undefined)
+
+// `checks` arrives ordered by audit.ts. Filtering preserves that order; nothing re-sorts.
+const failedChecks = (audit: Audit): Check[] => audit.checks.filter((c) => !c.passed)
+const passedChecks = (audit: Audit): Check[] => audit.checks.filter((c) => c.passed)
+
+/** The audit reads the whole tree, not a diff, so it states its own provenance — the same claim
+ *  `provenance` makes for the gap report, over the sources the audit actually used. */
+const auditProvenance = (inspection: Inspection, tick = '`'): string =>
+  `From ${tick}${inspection.runner.reportPath}${tick}, the git-tracked file tree and the manifest. ` +
+  `No language model produced these numbers.`
+
+/**
+ * The weight rule, stated ONCE, right under the bars where the reader meets the word Pyramid.
+ * `kindPriority` is the same order `scorePyramid` turned into ×3, ×2, ×1, and the profile that
+ * chose it is already in the header — so no Pyramid row repeats either.
+ */
+const pyramidRule = (profile: Profile): string =>
+  `Pyramid weighs the layers heaviest first: ${kindPriority(profile).join(', ')}.`
+
+/** No Pyramid row, nothing to explain — a project whose layers have no product line at all. */
+const explainsPyramid = (audit: Audit): boolean =>
+  audit.checks.some((c) => c.category === 'pyramid')
+
+/** The handoff, not decoration: audit diagnoses the project, inspect names the symbols. */
+const HANDOFF = 'redbar inspect --all'
+const HANDOFF_WHY = 'for the symbols, ranked by criticality'
+
+/** Setup === 0. One instruction, and nothing else — scoring coverage for someone with no tests is
+ *  a correct answer to a question they did not ask. */
+const NO_TESTS = [
+  'This repository has no tests. Coverage, Rigor and Pyramid are unmeasurable, not zero,',
+  'so no overall score is computed — one category out of four is not comparable to a repo',
+  'where all four were measured.',
+]
+
+/**
+ * What stands where the overall score would be when three of the four categories were never
+ * computed. Printing the weighted Setup score there — 50 × 0.20 = 10 — puts a number above a
+ * paragraph saying the other three are not in it, and no reader can get from 50 to 10 without
+ * assuming exactly what that paragraph forbids.
+ */
+const NO_OVERALL = 'overall not computed'
+const INIT = 'redbar init'
+const INIT_WHY = 'to set up a runner and a coverage report'
+
+/** The terminal report. */
+export function renderAuditText(audit: Audit, inspection: Inspection): string {
+  const { language, runner } = inspection
+  const out = [
+    `redbar audit · ${language.name} · ${runner.name} · ${profileLabel(audit.profile)}`,
+    '',
+    audit.unmeasurable ? `  ${NO_OVERALL}` : `  ${String(audit.overall).padStart(3)}   overall`,
+    '',
+  ]
+
+  for (const category of measuredCategories(audit)) {
+    const score = audit.scores[category]!
+    out.push(
+      `  ${CATEGORY_LABEL[category].padEnd(LABEL_WIDTH)}${String(score).padStart(3)}  ${bar(score)}`.trimEnd(),
+    )
+  }
+
+  if (explainsPyramid(audit)) out.push('', `  ${pyramidRule(audit.profile)}`)
+
+  if (audit.stale) {
+    out.push(
+      '',
+      `WARNING: ${runner.reportPath} is older than the source. Code written since the last`,
+      `         coverage run is absent from the report, and absent reads as untested.`,
+      `         This score is a LOWER BOUND.`,
+      `         Regenerate: ${runner.coverageCommand}`,
+    )
+  }
+
+  const block = (title: string, checks: Check[]) =>
+    checks.length === 0
+      ? []
+      : [
+          '',
+          title,
+          ...checks.map((c) => `  ${CATEGORY_LABEL[c.category].padEnd(LABEL_WIDTH)}${c.detail}`),
+        ]
+
+  out.push(...block('FAILED', failedChecks(audit)))
+  // before the unmeasurable branch returns: the checks Setup was computed from are worth 25 points
+  // each, and a Setup of 50 with nothing under it cannot be re-derived by the reader
+  out.push(...block('PASSED', passedChecks(audit)))
+
+  if (audit.unmeasurable) {
+    out.push('', ...NO_TESTS, '', auditProvenance(inspection, ''), '', `  → ${INIT}    ${INIT_WHY}`)
+    return out.join('\n')
+  }
+
+  out.push('', auditProvenance(inspection, ''), '', `  → ${HANDOFF}    ${HANDOFF_WHY}`)
+
+  return out.join('\n')
+}
+
+/** The audit's own anchor. It cannot share `MARKER` with the gap comment: a PR bot greps for its
+ *  marker to edit its previous comment in place, and two comments answering to one anchor would
+ *  overwrite each other on every push. */
+export const AUDIT_MARKER = '<!-- redbar-audit -->'
+
+/** GitHub pull request comment. No emoji — `AGENTS.md` forbids them in anything written to a PR. */
+export function renderAuditMarkdown(audit: Audit, inspection: Inspection): string {
+  const { language, runner } = inspection
+  const out = [
+    AUDIT_MARKER,
+    '## redbar audit',
+    '',
+    `**${audit.unmeasurable ? NO_OVERALL : `${audit.overall} / 100`}** — ${language.name} · ${runner.name} · ${profileLabel(audit.profile)}`,
+    '',
+  ]
+
+  if (audit.stale) {
+    out.push(
+      `**This score is a lower bound.** \`${runner.reportPath}\` is older than the source. Code ` +
+        `written since the last coverage run is absent from the report, and absent reads as ` +
+        `untested. Regenerate with \`${runner.coverageCommand}\` and audit again.`,
+      '',
+    )
+  }
+
+  out.push('| category | score | |', '| --- | --: | --- |')
+  for (const category of measuredCategories(audit)) {
+    out.push(`| ${CATEGORY_LABEL[category]} | ${audit.scores[category]} | \`${bar(audit.scores[category]!)}\` |`)
+  }
+  out.push('')
+
+  if (explainsPyramid(audit)) out.push(pyramidRule(audit.profile), '')
+
+  const block = (title: string, checks: Check[]) =>
+    checks.length === 0
+      ? []
+      : [
+          `### ${title}`,
+          '',
+          ...checks.map((c) => `- **${CATEGORY_LABEL[c.category]}** — ${mdEsc(c.detail)}`),
+          '',
+        ]
+
+  out.push(...block('Failed', failedChecks(audit)))
+  out.push(...block('Passed', passedChecks(audit)))
+
+  if (audit.unmeasurable) {
+    out.push(NO_TESTS.join(' '), '', `<sub>${auditProvenance(inspection)}</sub>`, '', `\`${INIT}\` ${INIT_WHY}.`)
+    return out.join('\n')
+  }
+
+  out.push(`<sub>${auditProvenance(inspection)}</sub>`, '', `\`${HANDOFF}\` ${HANDOFF_WHY}.`)
+
+  return out.join('\n')
+}
+
+/**
+ * The scorecard, self-contained, with a print stylesheet — four scores and two lists, never a gap
+ * table. `renderHtml` already owns that.
+ *
+ * ponytail: third hand-written stylesheet in this file. Extracting a shared shell would put two
+ * working, tested renderers at risk for zero behaviour change — do it when a fourth one arrives.
+ */
+export function renderAuditHtml(audit: Audit, inspection: Inspection, repoName: string): string {
+  const { language, runner } = inspection
+
+  const scoreRow = (category: Category) => {
+    const score = audit.scores[category]!
+    return `
+    <div class="row">
+      <div class="cat">${CATEGORY_LABEL[category]}</div>
+      <div class="n">${score}</div>
+      <div class="track"><div class="fill" style="width:${score}%"></div></div>
+    </div>`
+  }
+
+  const list = (title: string, checks: Check[]) =>
+    checks.length === 0
+      ? ''
+      : `<h2>${title}</h2>
+    <ul class="checks">${checks
+      .map(
+        (c) =>
+          `<li><span class="cat">${CATEGORY_LABEL[c.category]}</span><span>${esc(c.detail)}</span></li>`,
+      )
+      .join('')}</ul>`
+
+  return `<meta charset="utf-8">
+<title>redbar audit — ${esc(repoName)}</title>
+<style>
+  body { font: 14px/1.5 ui-sans-serif, -apple-system, system-ui, sans-serif; color: #16181d;
+         background: #fff; margin: 0 auto; padding: 40px; max-width: 760px;
+         -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  h1 { font-size: 28px; margin: 0 0 4px; letter-spacing: -0.02em; }
+  h1 .bar { color: #d92b2b; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: #5c6370;
+       margin: 28px 0 8px; }
+  .sub { color: #5c6370; font-size: 13px; margin-bottom: 26px; }
+  .overall { font-size: 56px; font-weight: 650; letter-spacing: -0.03em; line-height: 1; }
+  .overall span { font-size: 14px; font-weight: 400; color: #5c6370; letter-spacing: 0;
+                  text-transform: uppercase; }
+  .scores { margin: 22px 0 4px; }
+  .row { display: grid; grid-template-columns: 110px 44px 1fr; align-items: center; gap: 12px;
+         padding: 5px 0; }
+  .row .cat { font-size: 13px; }
+  .row .n { text-align: right; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .track { background: #eef0f3; border-radius: 3px; height: 10px; }
+  .fill { background: #16181d; border-radius: 3px; height: 10px; }
+  .checks { list-style: none; margin: 0; padding: 0; }
+  .checks li { display: grid; grid-template-columns: 110px 1fr; gap: 12px; padding: 4px 0;
+               border-bottom: 1px solid #eef0f3; font-size: 13px; }
+  .checks .cat { color: #5c6370; }
+  .stale { background: #fdf4f3; border-left: 3px solid #c0392b; padding: 12px 16px;
+           margin: 22px 0; font-size: 13px; color: #7d2419; }
+  .stale b { color: #c0392b; }
+  .stale code, .next code { background: #fff; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+  .next { background: #f7f8fa; border-left: 3px solid #16181d; padding: 12px 16px; margin-top: 26px;
+          font-size: 13px; }
+  .next code { background: #fff; font-family: ui-monospace, Menlo, monospace; }
+  footer { margin-top: 22px; color: #8b929c; font-size: 11.5px; }
+  @media print { body { padding: 0; } @page { margin: 14mm; size: A4; } }
+</style>
+<h1>red<span class="bar">bar</span> audit</h1>
+<div class="sub"><b>${esc(repoName)}</b> · ${esc(language.name)} · ${esc(runner.name)} ·
+  ${esc(profileLabel(audit.profile))}</div>
+<div class="overall">${audit.unmeasurable ? `<span>${NO_OVERALL}</span>` : `${audit.overall} <span>overall</span>`}</div>
+<div class="scores">${measuredCategories(audit).map(scoreRow).join('')}
+</div>
+${explainsPyramid(audit) ? `<div class="sub">${esc(pyramidRule(audit.profile))}</div>` : ''}
+${
+  audit.stale
+    ? `<div class="stale">
+  <b>This score is a lower bound.</b> <code>${esc(runner.reportPath)}</code> is older
+  than the source code it describes. Anything written since the last coverage run is absent from the
+  report, and absent reads as untested. Regenerate with <code>${esc(runner.coverageCommand)}</code>
+  and audit again.
+</div>`
+    : ''
+}
+${list('Failed', failedChecks(audit))}
+${list('Passed', passedChecks(audit))}
+<div class="next">${
+    audit.unmeasurable
+      ? `${esc(NO_TESTS.join(' '))} <code>${INIT}</code> ${INIT_WHY}.`
+      : `<code>${HANDOFF}</code> ${HANDOFF_WHY}.`
+  }</div>
+<footer>${esc(auditProvenance(inspection, ''))}</footer>
 `
 }

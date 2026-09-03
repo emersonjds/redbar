@@ -1,5 +1,7 @@
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
 import { inspect } from '../src/engine.js'
 import type { ChangedLines } from '../src/types.js'
 
@@ -67,5 +69,41 @@ describe('inspect finds the planted hole in all 5 languages', () => {
     expect(() =>
       inspect(root('ts'), { changed: new Map(), reportPath: 'coverage/none.info' }),
     ).toThrow(/coverage report not found.*vitest/s)
+  })
+})
+
+describe('inspect --all', () => {
+  let repo: string
+
+  beforeAll(() => {
+    repo = mkdtempSync(join(tmpdir(), 'redbar-all-'))
+    mkdirSync(join(repo, 'src', 'coverage'), { recursive: true })
+    mkdirSync(join(repo, 'coverage'), { recursive: true })
+    writeFileSync(join(repo, 'package.json'), '{"devDependencies":{"vitest":"^1.0.0"}}')
+    // `walk` skips every directory named `coverage` — this one holds real source
+    writeFileSync(join(repo, 'src', 'coverage', 'lcov.ts'), 'export function parse() {\n  return 1\n}\n')
+    // line 2 is blank: not executable, never in a report, and not a gap
+    writeFileSync(join(repo, 'src', 'dark.ts'), 'export function dark() {\n\n  return 2\n}\n')
+    writeFileSync(
+      join(repo, 'coverage', 'lcov.info'),
+      'SF:src/coverage/lcov.ts\nDA:1,1\nDA:2,0\nend_of_record\n',
+    )
+  })
+
+  // the report is the authority on what was instrumented: a measured file the walk cannot reach
+  // is still code somebody has to test
+  it('ranks a gap in a file the walk skips but the report measured', () => {
+    const gaps = inspect(repo, { all: true }).gaps
+
+    expect(gaps.map((g) => g.file)).toContain('src/coverage/lcov.ts')
+    expect(gaps.find((g) => g.file === 'src/coverage/lcov.ts')?.lines).toEqual([2])
+  })
+
+  // the Pyramid numerator and the Coverage denominator count the same lines, or the same document
+  // holds two answers to "how many lines are untested"
+  it('never counts a blank line as an untested line', () => {
+    const gaps = inspect(repo, { all: true }).gaps
+
+    expect(gaps.find((g) => g.file === 'src/dark.ts')?.lines).toEqual([1, 3, 4])
   })
 })

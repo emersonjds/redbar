@@ -65,8 +65,28 @@ export type Language = {
    * never shows up in the report at all.
    */
   sourceExtensions: string[]
-  /** test/spec/fixture files — changed, but never themselves a gap */
-  testFilePattern: RegExp
+  /** everything that is NOT product code — tests, fixtures, config, generated files. Changed, but
+   *  never itself a gap. Answers the negative question only; see `testPattern` for the other one. */
+  nonProductPattern: RegExp
+  /**
+   * How the RUNNER decides a file is a test. Not a house convention: pytest collects
+   * `test_*.py` and `*_test.py`, vitest and jest collect `*.test.*` and `*.spec.*` — this
+   * field is that published collection rule, copied, for the same reason `standards` names
+   * the library's own documentation instead of inventing one.
+   *
+   * `audit` divides by this to score Rigor, `hasTests` asks it before telling a human to run
+   * the suite, and `execute` uses it to tell the test the agent wrote from the source it must
+   * not have touched. It is the POSITIVE question, and it is not the complement of
+   * `nonProductPattern`: that pattern also matches `.d.ts`, `vitest.config.ts` and generated
+   * code, because its consumer only needs to know what is not product. Grading a config file
+   * as a test that asserts nothing is a false accusation, and a false accusation from a regex
+   * is worse than a missing feature.
+   *
+   * Match on the file's NAME, never on its directory. `e2e/pages/login.page.ts` and
+   * `tests/conftest.py` live in a test directory and assert nothing, correctly — a
+   * directory-wide pattern re-imports the exact bug this field was added to fix.
+   */
+  testPattern: RegExp
   /** matches an exported/public symbol declaration; group 1 = the name */
   symbolPatterns: RegExp[]
   /**
@@ -78,6 +98,20 @@ export type Language = {
    * mechanical instead of a sentence in a prompt.
    */
   assertionPatterns: RegExp[]
+  /**
+   * How a DISABLED test is spelled in this language's test idiom — `.skip`, `.only`, `xit`,
+   * `@Disabled`, `@pytest.mark.skip`, `t.Skip`.
+   *
+   * `audit` counts these to score Rigor: a suite that is half skipped produces a coverage report
+   * that looks fine, which is the failure mode `inspect` structurally cannot see. Matched against
+   * `stripNonCode` output, exactly like `assertionPatterns` — a `// it.skip(...)` in a comment is
+   * not a disabled test.
+   *
+   * Known ceiling: `stripNonCode` erases `#`-comments, and it cannot tell a comment from a Rust
+   * attribute, so `#[ignore]` is blanked out with them and goes undetected. The error runs in the
+   * safe direction — a file is called clean, never falsely accused.
+   */
+  disabledTestPatterns: RegExp[]
   /**
    * Test libs `init` proposes for the layers that are language-wide. `unit` is NOT here:
    * it belongs to the runner (jest vs vitest), and putting it here is what made init tell a
@@ -112,7 +146,13 @@ export const LANGUAGES: Language[] = [
       },
     ],
     sourceExtensions: ['.rs'],
-    testFilePattern: /(^|\/)tests\/|_test\.rs$/,
+    nonProductPattern: /(^|\/)tests\/|_test\.rs$/,
+    // cargo builds each file at the TOP level of tests/ as its own integration-test crate. A file
+    // in a SUBdirectory (tests/common/mod.rs) is the Book's own way of sharing helpers precisely
+    // because cargo does not build it as a test — matching it would grade a helper as a test.
+    // Unit tests live in `#[cfg(test)] mod tests` inside the source file, which has no test name
+    // to match and is not a test FILE.
+    testPattern: /(^|\/)tests\/[^\/]+\.rs$/,
     symbolPatterns: [
       /^\s*pub\s+(?:async\s+)?fn\s+(\w+)/,
       /^\s*pub\s+struct\s+(\w+)/,
@@ -120,6 +160,7 @@ export const LANGUAGES: Language[] = [
       /^\s*impl\s+(?:\w+\s+for\s+)?(\w+)/,
     ],
     assertionPatterns: [/\bassert(_eq|_ne)?!\s*\(/, /\bpanic!\s*\(/],
+    disabledTestPatterns: [/#\[ignore\b/],
     testLibs: {
       integration: ['tokio', 'reqwest'],
       e2e: ['@playwright/test'],
@@ -152,9 +193,12 @@ export const LANGUAGES: Language[] = [
       },
     ],
     sourceExtensions: ['.go'],
-    testFilePattern: /_test\.go$/,
+    nonProductPattern: /_test\.go$/,
+    // `go test` compiles exactly the files ending in _test.go — the toolchain's rule, verbatim
+    testPattern: /_test\.go$/,
     symbolPatterns: [/^func\s+(?:\([^)]*\)\s+)?([A-Z]\w*)/, /^type\s+([A-Z]\w*)/],
     assertionPatterns: [/\bassert\.\w+\s*\(/, /\brequire\.\w+\s*\(/, /\bt\.(Error|Fatal)\w*\s*\(/],
+    disabledTestPatterns: [/\bt\.Skip(Now|f)?\s*\(/],
     testLibs: {
       integration: ['github.com/testcontainers/testcontainers-go'],
       e2e: ['@playwright/test'],
@@ -194,12 +238,17 @@ export const LANGUAGES: Language[] = [
     ],
     sourceRoots: ['src/main/java', 'src/main/kotlin', 'src/main/scala'],
     sourceExtensions: ['.java', '.kt', '.scala'],
-    testFilePattern: /(^|\/)src\/test\/|Tests?\.(java|kt|scala)$/,
+    nonProductPattern: /(^|\/)src\/test\/|Tests?\.(java|kt|scala)$/,
+    // Surefire's default includes, minus its `Test*` PREFIX form: that form collects TestUtils.java
+    // and TestFixtures.java, helpers that assert nothing. The suffix forms are the ones every JUnit
+    // project actually names its tests with.
+    testPattern: /(?:Test|Tests|TestCase)\.(?:java|kt|scala)$/,
     symbolPatterns: [
       /^\s*public\s+(?:abstract\s+|final\s+)?class\s+(\w+)/,
       /^\s*public\s+(?:static\s+|final\s+|synchronized\s+|abstract\s+)*[\w<>\[\].]+\s+(\w+)\s*\(/,
     ],
     assertionPatterns: [/\bassert\w*\s*\(/, /\bverify\s*\(/],
+    disabledTestPatterns: [/@(Disabled|Ignore)\b/],
     testLibs: {
       integration: [
         'org.springframework.boot:spring-boot-starter-test',
@@ -237,12 +286,24 @@ export const LANGUAGES: Language[] = [
       },
     ],
     sourceExtensions: ['.php'],
-    testFilePattern: /(^|\/)tests?\/|Test\.php$/i,
+    nonProductPattern: /(^|\/)tests?\/|Test\.php$/i,
+    // phpunit's default testSuffix. Case-SENSITIVE, unlike the pattern above: `/i` here would
+    // collect Latest.php, and PSR-4 already makes the capital the class's own name.
+    testPattern: /Test\.php$/,
     symbolPatterns: [
       /^\s*(?:final\s+|abstract\s+)?class\s+(\w+)/,
       /^\s*public\s+(?:static\s+)?function\s+(\w+)/,
     ],
     assertionPatterns: [/\bassert\w*\s*\(/],
+    // Pest spells a disabled test as a chain terminator — `->skip()`, `->skip('reason')`,
+    // `->only()`. The argument is what separates it from Eloquent: `$query->skip(10)` and
+    // `$user->only(['id'])` are ordinary Laravel code, and `stripNonCode` has already erased the
+    // reason string by the time Rigor reads the file.
+    disabledTestPatterns: [
+      /\bmarkTest(Skipped|Incomplete)\s*\(/,
+      /->\s*skip\s*\(\s*(?:\)|['"])/,
+      /->\s*only\s*\(\s*\)/,
+    ],
     testLibs: {
       integration: ['phpunit/phpunit', 'guzzlehttp/guzzle'],
       e2e: ['@playwright/test'],
@@ -274,9 +335,13 @@ export const LANGUAGES: Language[] = [
       },
     ],
     sourceExtensions: ['.py'],
-    testFilePattern: /(^|\/)tests?\/|(^|\/)test_[^\/]+\.py$|_test\.py$/,
+    nonProductPattern: /(^|\/)tests?\/|(^|\/)test_[^\/]+\.py$|_test\.py$/,
+    // pytest's `python_files` default: test_*.py and *_test.py. conftest.py is fixtures — pytest
+    // imports it and collects nothing from it.
+    testPattern: /(^|\/)test_[^\/]*\.py$|_test\.py$/,
     symbolPatterns: [/^def\s+(\w+)/, /^class\s+(\w+)/],
     assertionPatterns: [/^\s*assert\b/m, /\bpytest\.raises\s*\(/, /\bself\.assert\w+\s*\(/],
+    disabledTestPatterns: [/@(pytest\.mark\.skip\w*|unittest\.skip\w*)\b/, /\b(pytest\.skip|self\.skipTest)\s*\(/],
     testLibs: {
       integration: ['pytest', 'httpx', 'testcontainers'],
       e2e: ['pytest-playwright'],
@@ -329,8 +394,14 @@ export const LANGUAGES: Language[] = [
     // ranking as a real repo's #3 gap. Never product code.
     // mocks/ (MSW request handlers) and *.gen.ts (a generated TanStack routeTree) both ranked as
     // gaps on a real admin front-end — the same class of noise: test scaffolding and generated code.
-    testFilePattern:
-      /(^|\/)(__tests__|__mocks__|mocks|e2e|public)\/|\.(test|spec)\.[jt]sx?$|\.d\.ts$|\.gen\.[jt]sx?$|(^|\/)[\w.-]*\.(config|setup|resolver)\.[jt]sx?$|(^|\/)(jest|vitest|metro|babel|eslint)\.[\w.]*[jt]sx?$/,
+    nonProductPattern:
+      // the test branch is `testPattern` verbatim — a file the runner collects that this pattern
+      // calls product code is graded for its assertions AND charged as untested source
+      /(^|\/)(__tests__|__mocks__|mocks|e2e|public)\/|\.(?:[\w-]+-)?(?:test|spec)\.[cm]?[jt]sx?$|\.d\.ts$|\.gen\.[jt]sx?$|(^|\/)[\w.-]*\.(config|setup|resolver)\.[jt]sx?$|(^|\/)(jest|vitest|metro|babel|eslint)\.[\w.]*[jt]sx?$/,
+    // What vitest and jest collect: `*.test.*` and `*.spec.*`. The qualifier is `[\w-]+-` and not
+    // `[\w-]*` so that `app.e2e-spec.ts` (the NestJS default) is collected while `release.latest.ts`
+    // is not — the hyphen is what separates a qualified spec from a word that merely ends in one.
+    testPattern: /\.(?:[\w-]+-)?(?:test|spec)\.[cm]?[jt]sx?$/,
     // A top-level declaration is one at column 0 — `export` is NOT required. Real React code
     // writes `const Button = (...)` and exports it at the bottom with `export default Button`;
     // demanding the keyword here left every component in a real app named "(no symbol)".
@@ -341,6 +412,7 @@ export const LANGUAGES: Language[] = [
       /^(?:export\s+)?(?:const|let)\s+(\w+)/,
     ],
     assertionPatterns: [/\bexpect\s*\(/, /\bassert\w*\s*\(/],
+    disabledTestPatterns: [/\b(it|test|describe|suite|bench)\.(skip|only|todo|failing)\b/, /\b(xit|xtest|xdescribe|fit|fdescribe)\s*\(/],
     testLibs: {
       integration: ['supertest'],
       e2e: ['@playwright/test'],

@@ -7,7 +7,7 @@ import type { Gap } from '../src/types.js'
 
 const language = byId('ts')!
 const runner = language.runners[0]!
-const inspection: Inspection = { language, runner, base: 'origin/main', gaps: [] }
+const inspection: Inspection = { language, runner, base: 'origin/main', gaps: [], coverage: new Map() }
 
 const gap = (symbol: string, over: Partial<Gap> = {}): Gap => ({
   file: 'src/calc.ts',

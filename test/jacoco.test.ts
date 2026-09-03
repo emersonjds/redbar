@@ -36,6 +36,18 @@ describe('parseJacoco', () => {
     ).toBe(true)
   })
 
+  // same rule as the lcov parser: measured-and-empty is not absent
+  it('keeps a sourcefile with no line element as a measured file with nothing executable', () => {
+    const xml =
+      '<report><package name="com/example"><sourcefile name="Marker.java"></sourcefile></package></report>'
+
+    expect(parseJacoco(xml).get('src/main/java/com/example/Marker.java')).toEqual({
+      file: 'src/main/java/com/example/Marker.java',
+      covered: [],
+      uncovered: [],
+    })
+  })
+
   it('returns an empty map for XML without a package', () => {
     expect(parseJacoco('<report/>').size).toBe(0)
   })

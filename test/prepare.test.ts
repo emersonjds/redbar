@@ -110,6 +110,13 @@ describe('hasTests', () => {
     expect(hasTests(root, ts)).toBe(false)
   })
 
+  // the failure this function exists to prevent: running the suite of a repo whose only "test"
+  // file is the runner config writes an empty report, which crosses to a confident "no gaps"
+  it('is false for a project whose only test-shaped file is the runner config', () => {
+    const root = repo({ 'package.json': '{}', 'vitest.config.ts': '', 'src/a.ts': '' })
+    expect(hasTests(root, ts)).toBe(false)
+  })
+
   it('does not mistake node_modules for the project having tests', () => {
     const root = repo({ 'package.json': '{}', 'node_modules/dep/index.test.js': '' })
     expect(hasTests(root, ts)).toBe(false)

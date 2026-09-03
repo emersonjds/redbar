@@ -1,5 +1,5 @@
 import type { Coverage } from '../types.js'
-import { addLine, type LineHits, toCoverage } from './merge.js'
+import { addFile, addLine, type LineHits, toCoverage } from './merge.js'
 
 // ponytail: same call as jacoco.ts — regex over machine-generated XML, zero dependency.
 // number and hits are read independently: XML attribute order is not guaranteed by any writer.
@@ -26,6 +26,8 @@ export function parseCobertura(xml: string, root = ''): Coverage {
 
   for (const [, filename, body] of xml.matchAll(CLASS)) {
     const file = resolveFile(clean(filename ?? ''), sources, clean(root))
+    // the <class> element is the measurement — see addFile
+    addFile(acc, file)
 
     for (const [tag] of (body ?? '').matchAll(LINE)) {
       const nr = NUMBER.exec(tag)?.[1]

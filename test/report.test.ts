@@ -20,7 +20,7 @@ const gap = (overrides: Partial<Gap>): Gap => ({
 })
 
 function inspection(gaps: Gap[]): Inspection {
-  return { language, runner, base: 'origin/master', gaps }
+  return { language, runner, base: 'origin/master', gaps, coverage: new Map() }
 }
 
 describe('renderJson', () => {

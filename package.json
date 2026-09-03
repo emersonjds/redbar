@@ -7,7 +7,7 @@
   "author": "Emerson Silva",
   "repository": {
     "type": "git",
-    "url": "https://github.com/emersonjds/redbar.git"
+    "url": "git+https://github.com/emersonjds/redbar.git"
   },
   "keywords": [
     "testing",
@@ -22,7 +22,7 @@
     "node": ">=20.11"
   },
   "bin": {
-    "redbar": "./dist/cli.js"
+    "redbar": "dist/cli.js"
   },
   "files": [
     "dist",

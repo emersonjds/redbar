@@ -10,6 +10,12 @@ While the major version is `0`, the public surface — the CLI flags, the `gaps.
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-09-03
+
+The score. Until now redbar only measured a diff; `audit` measures the repository. Everything
+recorded under 0.2.1 ships here too — that version was written down but never published, so 0.2.0 is
+the release this one follows.
+
 ### Added
 
 - **`redbar audit` — the whole project, scored.** `inspect` answers what the diff left untested;
@@ -51,6 +57,9 @@ While the major version is `0`, the public surface — the CLI flags, the `gaps.
   one no test imports and cost its whole length against the score.
 
 ## [0.2.1] — 2026-07-23
+
+_Never published to npm: the version was bumped by hand, so no tag was cut and no release ran. The
+fix below reaches users in 0.3.0._
 
 ### Fixed
 
@@ -183,8 +192,9 @@ hand-written fixture** — which is the most useful thing we learned.
 - JaCoCo source roots were unreachable from `inspect()`, so any Kotlin or multi-module Maven repo
   returned **zero gaps with no error**.
 
-[Unreleased]: https://github.com/emersonjds/redbar/compare/v0.2.1...HEAD
-[0.2.1]: https://github.com/emersonjds/redbar/compare/v0.2.0...v0.2.1
+[Unreleased]: https://github.com/emersonjds/redbar/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/emersonjds/redbar/compare/v0.2.0...v0.3.0
+[0.2.1]: https://github.com/emersonjds/redbar/compare/v0.2.0...8511989
 [0.2.0]: https://github.com/emersonjds/redbar/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/emersonjds/redbar/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/emersonjds/redbar/releases/tag/v0.1.1

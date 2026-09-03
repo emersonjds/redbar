@@ -32,6 +32,14 @@ While the major version is `0`, the public surface — the CLI flags, the `gaps.
 
 ### Fixed
 
+- **The provenance line printed a git command nobody can run.** On an `--all` run, `base` is the
+  label `(whole repository)`, not a ref, and the gap report and the briefing interpolated it into a
+  command template: the one line whose whole job is to let a reader reproduce the number rendered as
+  `git diff (whole repository)`. Both now name what was measured — every git-tracked source file.
+- **`redbar compare` could only ever diff the current directory.** It hardcoded the working
+  directory, so the runs it compared were whichever folder the shell happened to be in. Its
+  positionals are run ids, so the repository now arrives as `--path <dir>`, the same shape `explain`
+  already uses for the same reason.
 - **`hasTests` said yes for a project with no tests.** It asked "is this file not product code?",
   which `vitest.config.ts` and `*.d.ts` answer yes to. `prepare` then told the developer to run a
   suite that produced an empty report, and `inspect` reported no gaps — the worst possible answer.

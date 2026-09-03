@@ -80,7 +80,7 @@ const LAYERS: TestKind[] = ['unit', 'integration', 'e2e']
  * fixture factory?). It is APPENDED, never a replacement — a project that overrides everything has
  * not adopted a standard, it has written a house style with extra steps.
  */
-function readConventions(root: string, language: Language): Conventions {
+export function readConventions(root: string, language: Language): Conventions {
   const conventions: Conventions = {}
   const e2eFile = selectE2eTool(root, language).conventionFile
 
@@ -98,7 +98,7 @@ function readConventions(root: string, language: Language): Conventions {
   return conventions
 }
 
-function briefingFor(root: string, inspection: Inspection): string {
+export function briefingFor(root: string, inspection: Inspection): string {
   const { language } = inspection
   const profile = detectProfile(readManifest(root, language))
   const e2eStandard = selectE2eTool(root, language).standard
@@ -115,7 +115,7 @@ type Flags = Record<string, string | boolean>
 
 /** Hand-rolled arg parsing: flags in VALUE_FLAGS consume the next argv slot, everything else
  *  starting with "--" is a boolean flag, everything else is positional. */
-function parseArgs(argv: string[], valueFlags: Set<string>): { positional: string[]; flags: Flags } {
+export function parseArgs(argv: string[], valueFlags: Set<string>): { positional: string[]; flags: Flags } {
   const positional: string[] = []
   const flags: Flags = {}
   for (let i = 0; i < argv.length; i++) {
@@ -137,7 +137,7 @@ function parseArgs(argv: string[], valueFlags: Set<string>): { positional: strin
  * pull request of every legacy project, gets switched off that afternoon, and takes the gate that
  * WOULD have worked down with it. The gate judges the diff. `--all` is for looking.
  */
-function opts(flags: Flags): InspectOptions {
+export function opts(flags: Flags): InspectOptions {
   const base = typeof flags.base === 'string' ? flags.base : undefined
   return {
     // a human at a terminal asked for an answer, not for a chore: if the report is missing, run
@@ -149,7 +149,7 @@ function opts(flags: Flags): InspectOptions {
   }
 }
 
-function readVersion(): string {
+export function readVersion(): string {
   const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
     version: string
   }
@@ -157,14 +157,14 @@ function readVersion(): string {
 }
 
 // A fresh dated run dir. Runs are kept, not overwritten — so compare has a before to diff against.
-function newRunDir(root: string, now: Date): string {
+export function newRunDir(root: string, now: Date): string {
   const runDir = join(root, '.redbar', 'runs', runDirName(now))
   mkdirSync(runDir, { recursive: true })
   return runDir
 }
 
 // Point `.redbar/latest` at the newest run — a symlink, or a text file where the OS refuses one.
-function updateLatest(root: string, runDir: string): void {
+export function updateLatest(root: string, runDir: string): void {
   const redbar = join(root, '.redbar')
   const link = join(redbar, 'latest')
   const target = relative(redbar, runDir)
@@ -240,7 +240,7 @@ export function renderExecutePlan(gaps: Gap[]): string {
   return lines.join('\n')
 }
 
-function runInspect(argv: string[]): void {
+export function runInspect(argv: string[]): void {
   const { positional, flags } = parseArgs(argv, new Set(['base', 'html', 'md', 'out', 'top']))
   const root = positional[0] ?? '.'
 
@@ -327,7 +327,7 @@ export function auditInput(
   }
 }
 
-function runAudit(argv: string[]): void {
+export function runAudit(argv: string[]): void {
   const { positional, flags } = parseArgs(argv, new Set(['html', 'md', 'pdf']))
   const root = positional[0] ?? '.'
 
@@ -373,7 +373,7 @@ function runAudit(argv: string[]): void {
  * One inspection, three renderings. They cannot disagree, which is the only property that makes a
  * report worth sending to someone who cannot re-run it.
  */
-function runBriefing(argv: string[]): void {
+export function runBriefing(argv: string[]): void {
   const { positional, flags } = parseArgs(argv, new Set(['base', 'out', 'pdf']))
   const root = positional[0] ?? '.'
 
@@ -456,7 +456,7 @@ export function dirtyTreeError(porcelain: string): string | null {
 }
 
 /** One y/N question on the terminal. The consent decision is a human's, never the agent's. */
-function confirm(question: string): Promise<boolean> {
+export function confirm(question: string): Promise<boolean> {
   const rl = createInterface({ input: process.stdin, output: process.stderr })
   return new Promise((resolve) => {
     rl.question(question, (answer) => {
@@ -474,7 +474,7 @@ function confirm(question: string): Promise<boolean> {
  * the runner says whether it passes, and a fresh coverage report says whether the gap is closed.
  * The agent writes; redbar grades.
  */
-async function runExecute(argv: string[]): Promise<void> {
+export async function runExecute(argv: string[]): Promise<void> {
   const { positional, flags } = parseArgs(argv, new Set(['agent', 'base', 'max', 'severity']))
   const root = positional[0] ?? '.'
 
@@ -666,7 +666,7 @@ async function runExecute(argv: string[]): Promise<void> {
  * ponytail: the JVM entries take a class name where the others take a path, so maven and gradle
  * only work when the test file's basename IS the class. Fix when a JVM repo actually runs execute.
  */
-function testRunCommand(runner: string): string {
+export function testRunCommand(runner: string): string {
   const commands: Record<string, string> = {
     vitest: 'npx vitest run',
     jest: 'npx jest',
@@ -681,7 +681,7 @@ function testRunCommand(runner: string): string {
 }
 
 /** The audit. `redbar explain Checkout` — where every number in that row came from. */
-function runExplain(argv: string[]): void {
+export function runExplain(argv: string[]): void {
   const { positional, flags } = parseArgs(argv, new Set(['path', 'base']))
   const root = typeof flags.path === 'string' ? flags.path : '.'
   const query = positional[0] ?? ''
@@ -718,7 +718,7 @@ export function resolveRun(runs: string[], arg: string): string {
  * is new, the per-band delta. No model, no clock — it reads two gaps.json and subtracts, which is
  * the property that lets a developer put the trend in front of a boss.
  */
-function runCompare(argv: string[]): void {
+export function runCompare(argv: string[]): void {
   const { positional } = parseArgs(argv, new Set())
   const root = '.'
   const runsDir = join(root, '.redbar', 'runs')
@@ -761,7 +761,7 @@ function runCompare(argv: string[]): void {
 }
 
 /** The MCP server. The engine, exposed to whatever agent the developer already uses. */
-function runMcp(argv: string[]): void {
+export function runMcp(argv: string[]): void {
   const { positional } = parseArgs(argv, new Set())
   const defaultRoot = positional[0] ?? '.'
 
@@ -834,7 +834,7 @@ function runMcp(argv: string[]): void {
  * through the npm-link symlink, the same realpathSync the isMain guard needs and for the same
  * reason (`npm link` leaves process.argv[1] as the symlink; the host needs the real file).
  */
-function runMcpConfig(argv: string[]): void {
+export function runMcpConfig(argv: string[]): void {
   const { positional, flags } = parseArgs(argv, new Set())
   const local = flags.local === true
   const l = local
@@ -873,7 +873,7 @@ function runMcpConfig(argv: string[]): void {
   )
 }
 
-function runInit(argv: string[]): void {
+export function runInit(argv: string[]): void {
   const { positional } = parseArgs(argv, new Set())
   const root = positional[0] ?? '.'
 
@@ -902,7 +902,7 @@ function runInit(argv: string[]): void {
   }
 }
 
-function runCi(argv: string[]): number {
+export function runCi(argv: string[]): number {
   const { positional, flags } = parseArgs(
     argv,
     new Set(['base', 'max-critical', 'max-high', 'md']),
@@ -946,7 +946,7 @@ export function canonical(command: string): string {
   return ALIASES[command] ?? command
 }
 
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
   const argv = process.argv.slice(2)
   const command = argv[0] && canonical(argv[0])
 

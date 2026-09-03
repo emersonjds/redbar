@@ -3,7 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { inspect } from '../src/engine.js'
-import type { ChangedLines } from '../src/types.js'
+import { byId } from '../src/languages.js'
+import type { ChangedLines, CoverageFormat } from '../src/types.js'
 
 const root = (name: string) => join(import.meta.dirname, '..', 'fixtures', name)
 
@@ -105,5 +106,28 @@ describe('inspect --all', () => {
     const gaps = inspect(repo, { all: true }).gaps
 
     expect(gaps.find((g) => g.file === 'src/dark.ts')?.lines).toEqual([1, 3, 4])
+  })
+})
+
+// `CoverageFormat` is a closed union of the three formats the registry ever declares — a fourth
+// one can only arrive by a future language entry with no parser wired for it yet, which is
+// exactly the compile-time promise `assertNever` backstops at runtime.
+describe('inspect — a coverage format with no parser wired', () => {
+  it('fails loudly instead of silently returning no coverage', () => {
+    const repo = mkdtempSync(join(tmpdir(), 'redbar-badformat-'))
+    mkdirSync(join(repo, 'coverage'), { recursive: true })
+    writeFileSync(join(repo, 'package.json'), '{"devDependencies":{"vitest":"^1.0.0"}}')
+    writeFileSync(join(repo, 'coverage', 'lcov.info'), 'SF:src/a.ts\nDA:1,1\nend_of_record\n')
+
+    const ts = byId('ts')!
+    const original = ts.format
+    ts.format = 'xml-nobody-wrote-a-parser-for' as CoverageFormat
+    try {
+      expect(() => inspect(repo, { changed: new Map() })).toThrow(
+        /no parser wired for coverage format/,
+      )
+    } finally {
+      ts.format = original
+    }
   })
 })

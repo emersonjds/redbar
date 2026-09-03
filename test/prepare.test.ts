@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { hasTests } from '../src/files.js'
-import { byId } from '../src/languages.js'
+import { byId, type Runner } from '../src/languages.js'
 import { ensureCoverage } from '../src/prepare.js'
 
 const ts = byId('ts')!
@@ -96,6 +96,58 @@ describe('ensureCoverage', () => {
     // report LIE about the product code — and crying wolf on every test edit trains people to
     // ignore the warning that matters
     expect(ensureCoverage(root, ts, runner, 'coverage/lcov.info', false).stale).toBe(false)
+  })
+})
+
+describe('ensureCoverage — running the suite (run: true)', () => {
+  it('runs the registry command and reads the report it wrote', () => {
+    const root = repo({
+      'package.json': '{"devDependencies":{"vitest":"1"}}',
+      'src/a.ts': 'export const a = 1',
+      'src/a.test.ts': 'it("x", () => {})',
+    })
+    const writes: Runner = {
+      ...runner,
+      coverageCommand: 'mkdir -p coverage && printf "SF:src/a.ts\\nDA:1,1\\nend_of_record" > coverage/lcov.info',
+    }
+
+    expect(ensureCoverage(root, ts, writes, 'coverage/lcov.info', true)).toEqual({
+      ran: true,
+      stale: false,
+    })
+  })
+
+  // a failing suite still writes a report for the tests that DID run — that report is worth
+  // reading, so a non-zero exit must not throw away what was written
+  it('still reads the report when the coverage command exits non-zero', () => {
+    const root = repo({
+      'package.json': '{"devDependencies":{"vitest":"1"}}',
+      'src/a.ts': 'export const a = 1',
+      'src/a.test.ts': 'it("x", () => {})',
+    })
+    const failsButWrites: Runner = {
+      ...runner,
+      coverageCommand:
+        'mkdir -p coverage && printf "SF:src/a.ts\\nDA:1,1\\nend_of_record" > coverage/lcov.info && exit 1',
+    }
+
+    expect(ensureCoverage(root, ts, failsButWrites, 'coverage/lcov.info', true)).toEqual({
+      ran: true,
+      stale: false,
+    })
+  })
+
+  it('throws when the command ran but the report still does not exist', () => {
+    const root = repo({
+      'package.json': '{"devDependencies":{"vitest":"1"}}',
+      'src/a.ts': 'export const a = 1',
+      'src/a.test.ts': 'it("x", () => {})',
+    })
+    const noop: Runner = { ...runner, coverageCommand: 'true' }
+
+    expect(() => ensureCoverage(root, ts, noop, 'coverage/lcov.info', true)).toThrow(
+      /still does not exist/,
+    )
   })
 })
 

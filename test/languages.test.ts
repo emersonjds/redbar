@@ -184,5 +184,24 @@ describe('language registry', () => {
     expect(byId('php')?.installCommand(['phpunit/phpunit'])).toBe(
       'composer require --dev phpunit/phpunit',
     )
+    expect(byId('rust')?.installCommand(['tokio', 'reqwest'])).toBe(
+      'cargo add --dev tokio reqwest',
+    )
+    expect(byId('go')?.installCommand(['github.com/testcontainers/testcontainers-go'])).toBe(
+      'go get github.com/testcontainers/testcontainers-go',
+    )
+    expect(byId('python')?.installCommand(['pytest', 'pytest-cov'])).toBe(
+      'pip install -U pytest pytest-cov',
+    )
+  })
+
+  // maven has no install-by-command: the human pastes the block into pom.xml, so this prints a
+  // commented dependency list instead of a runnable shell line
+  it('java installCommand prints a pom.xml block instead of a shell command', () => {
+    expect(
+      byId('java')?.installCommand(['org.junit.jupiter:junit-jupiter', 'org.mockito:mockito-core']),
+    ).toBe(
+      '# add to pom.xml (<dependencies>, with <scope>test</scope>):\n#   org.junit.jupiter:junit-jupiter\n#   org.mockito:mockito-core',
+    )
   })
 })

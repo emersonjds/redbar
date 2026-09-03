@@ -1,5 +1,6 @@
 // Pure renderers: string in/out, no disk access. Callers (scripts/*, cli.ts) do the writing.
 import type { Audit, Category, Check } from './audit.js'
+import { scopeOfLines } from './engine.js'
 import type { Inspection } from './engine.js'
 import { bandReason, scoreArithmetic } from './explain.js'
 import { isMeasured, type Outcome, type Verdict } from './outcome.js'
@@ -60,7 +61,7 @@ export function renderText(inspection: Inspection, top = 20): string {
 /** The number's provenance, in one line. It is the claim the whole tool rests on — every
  *  renderer carries it, so no audience ever sees the gaps without seeing where they came from. */
 const provenance = (inspection: Inspection): string =>
-  `From \`${inspection.runner.reportPath}\` × \`git diff ${inspection.base}\`. ` +
+  `From \`${inspection.runner.reportPath}\` × ${scopeOfLines(inspection.base)}. ` +
   `No language model produced these numbers.`
 
 /** A stable anchor at the top of the comment. The action greps for it to find the comment it

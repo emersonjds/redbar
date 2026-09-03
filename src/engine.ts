@@ -92,6 +92,16 @@ export function inspect(root: string, opts: InspectOptions = {}): Inspection {
 export const WHOLE_REPO = '(whole repository)'
 
 /**
+ * Where the measured lines came from, phrased so a reader can act on it.
+ *
+ * `--all` sets `base` to a label, not a ref: interpolating it into a command template printed
+ * `git diff (whole repository)` in the one line whose whole job is to let someone reproduce the
+ * number. Every renderer asks here instead of formatting the ref itself.
+ */
+export const scopeOfLines = (base: string, range = ''): string =>
+  base === WHOLE_REPO ? 'every git-tracked source file' : `\`git diff ${base}${range}\``
+
+/**
  * Every line of every product file, as if the whole repository were the diff.
  *
  * Deliberately the whole FILE TREE, not just the files present in the coverage report: a file no

@@ -284,7 +284,8 @@ It's one line in a table (`src/languages.ts`):
     reportPath: 'coverage/lcov/project.lcov',
   }],
   sourceExtensions: ['.rb'],
-  testFilePattern: /(^|\/)spec\/|_spec\.rb$/,
+  nonProductPattern: /(^|\/)spec\/|_spec\.rb$/,  // NOT product code
+  testPattern: /_spec\.rb$/,                     // what rspec collects
   symbolPatterns: [/^\s*def\s+(\w+)/, /^\s*class\s+(\w+)/],
   testLibs: { unit: ['rspec'], integration: ['rspec', 'webmock'], e2e: ['capybara'] },
   installCommand: (libs) => `bundle add --group test ${libs.join(' ')}`,

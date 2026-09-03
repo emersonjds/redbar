@@ -42,7 +42,7 @@ export function ensureCoverage(
 
   if (!hasTests(root, language)) {
     throw new Error(
-      `redbar: this project has no test files (nothing matches ${language.testFilePattern}).\n` +
+      `redbar: this project has no test files (nothing matches ${language.testPattern}).\n` +
         `There is no coverage to measure yet. Run \`redbar init\` to see which test libraries are ` +
         `missing — it prints the install command and installs nothing.`,
     )

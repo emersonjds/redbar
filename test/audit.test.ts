@@ -75,6 +75,30 @@ describe('audit', () => {
       expect(result.checks.every((c) => c.category === 'setup')).toBe(true)
       expect(result.overall).toBe(0)
     })
+
+    // Rigor divides by the number of test files. A repository with a runner, a report and no file
+    // the runner collects still has nothing to divide by, and `scoreRigor`'s `return 0` would be a
+    // measurement that never happened — the short-circuit is about the DENOMINATOR, not about Setup.
+    it('short-circuits on zero test files even when the runner and the report are fine', () => {
+      const result = audit(input({ testFiles: [] }))
+
+      expect(result.unmeasurable).toBe(true)
+      expect(result.scores).toEqual({ setup: 50 })
+      expect(result.overall).toBe(10) // 50 × 0.20, the fixed weight, nothing renormalised
+    })
+
+    it('names the pattern it measured instead of accusing the repository of having no tests', () => {
+      const result = audit(input({ testFiles: [] }))
+
+      expect(failedDetails(result)).toContainEqual(`no file matches ${ts.testPattern}`)
+      expect(result.checks.some((c) => c.detail.includes('the repository has 0 tests'))).toBe(false)
+    })
+
+    it('the passing sentence names the pattern too', () => {
+      const passed = audit(input()).checks.filter((c) => c.passed).map((c) => c.detail)
+
+      expect(passed).toContainEqual(`1 test file(s) match ${ts.testPattern}`)
+    })
   })
 
   describe('coverage', () => {

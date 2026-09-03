@@ -29,7 +29,7 @@ function scored(over: Partial<Audit> = {}): Audit {
     scores: { setup: 100, coverage: 48, rigor: 71, pyramid: 55 },
     overall: 62,
     checks: [
-      check('setup', true, '82 test file(s) match the ts test pattern'),
+      check('setup', true, `82 test file(s) match ${ts.testPattern}`),
       check('setup', true, 'vitest is named in the manifest'),
       check('coverage', false, '31 of 82 product files (38%) have no coverage at all'),
       check('coverage', false, '1,204 of 2,310 executable lines are untested'),
@@ -42,13 +42,13 @@ function scored(over: Partial<Audit> = {}): Audit {
   }
 }
 
-/** the shape `audit()` returns when Setup === 0: one score, and the other three ABSENT */
+/** the shape `audit()` returns with no test file: one score, and the other three ABSENT */
 function unmeasurable(): Audit {
   return {
     scores: { setup: 0 },
     overall: 0,
     checks: [
-      check('setup', false, 'no file matches the ts test pattern — the repository has 0 tests'),
+      check('setup', false, `no file matches ${ts.testPattern}`),
       check('setup', true, 'vitest is named in the manifest'),
       check('setup', false, 'coverage/lcov.info parsed 0 files — nothing was measured'),
     ],

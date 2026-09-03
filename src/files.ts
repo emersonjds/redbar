@@ -32,7 +32,7 @@ export function* walk(root: string): Generator<string> {
 
 /** Product code: a source extension for this language, and not a test/spec/fixture. */
 export function isProductFile(file: string, language: Language): boolean {
-  if (language.testFilePattern.test(file)) return false
+  if (language.nonProductPattern.test(file)) return false
   return language.sourceExtensions.some((ext) => file.endsWith(ext))
 }
 
@@ -43,10 +43,13 @@ export function isProductFile(file: string, language: Language): boolean {
  * a project WITH tests and no coverage report needs a command run. A project with NO tests needs a
  * human decision about libraries, and running the suite would produce an empty report and a
  * confident "no gaps" — the worst possible answer.
+ *
+ * `testPattern`, never `nonProductPattern`: a repo whose only test-shaped file is vitest.config.ts
+ * would answer yes to the second one, and yes is the answer that runs the suite.
  */
 export function hasTests(root: string, language: Language): boolean {
   for (const file of walk(root)) {
-    if (language.testFilePattern.test(file)) return true
+    if (language.testPattern.test(file)) return true
   }
   return false
 }

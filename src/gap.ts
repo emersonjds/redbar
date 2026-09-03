@@ -72,7 +72,7 @@ export function findGaps(
  * branching here.
  */
 function isProductCode(file: string, lang: Language): boolean {
-  if (lang.testFilePattern.test(file)) return false
+  if (lang.nonProductPattern.test(file)) return false
   return lang.sourceExtensions.some((ext) => file.endsWith(ext))
 }
 

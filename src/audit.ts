@@ -25,10 +25,10 @@ export type AuditInput = {
   inspection: Inspection
   coverage: Coverage
   /**
-   * repo-relative paths of TEST files. `language.testFilePattern` is the starting point, but that
-   * pattern answers "not product code" — it also matches `vitest.config.ts`, `.d.ts` and generated
-   * files, and grading a config file as a test that asserts nothing is a false accusation. The
-   * caller narrows it before it gets here.
+   * repo-relative paths of TEST files — what `language.testPattern` matched, never
+   * `nonProductPattern`. That other pattern answers "not product code": it also matches
+   * `vitest.config.ts`, `.d.ts` and generated files, and grading a config file as a test that
+   * asserts nothing is a false accusation.
    */
   testFiles: string[]
   /** repo-relative paths of product files, whether or not the report knows them */
@@ -40,14 +40,14 @@ export type AuditInput = {
 
 export type Audit = {
   /**
-   * Partial on purpose: `Setup === 0` short-circuits, and the three other categories are then
+   * Partial on purpose: no test file short-circuits, and the three other categories are then
    * ABSENT rather than `0`. A `0` would claim a measurement that never happened.
    */
   scores: Partial<Record<Category, number>>
   overall: number
   checks: Check[]
   profile: Profile
-  /** Setup === 0: nothing else was computed. The report stops and points at `redbar init`. */
+  /** no test file: only Setup was computed. The report stops and points at `redbar init`. */
   unmeasurable: boolean
   stale?: boolean
 }
@@ -73,12 +73,16 @@ export function audit(input: AuditInput): Audit {
 
   const setup = scoreSetup(input, testFiles)
 
-  // Setup === 0 means the repository has no test at all. Scoring coverage for someone with no
-  // tests is a correct answer to a question they did not ask.
-  if (setup.score === 0) {
+  // Zero test files, not `setup.score === 0`: Rigor DIVIDES by this count, and a repo with a runner
+  // and a report but no file matching `testPattern` would take `scoreRigor`'s `return 0` — a
+  // measurement that never happened, the thing `Partial<Record<Category, number>>` exists against.
+  // Scoring coverage for someone with no tests is a correct answer to a question they did not ask.
+  if (testFiles.length === 0) {
     return {
-      scores: { setup: 0 },
-      overall: 0,
+      scores: { setup: setup.score },
+      // the fixed weight applied to the one category that was measured. Nothing is renormalised:
+      // a per-repo weight makes two repos incomparable, which is the whole point of WEIGHTS.
+      overall: round(setup.score * WEIGHTS.setup),
       checks: setup.checks,
       profile,
       unmeasurable: true,
@@ -130,10 +134,13 @@ function scoreSetup(input: AuditInput, testFiles: string[]): Scored {
     {
       category: 'setup',
       passed: tests > 0,
+      // the pattern itself, not "the ts test pattern": redbar measured a regex, and a reader whose
+      // tests are named some other way can see that in one line instead of being told they have
+      // none. `String(regexp)` is stable, so the sentence stays byte-identical run to run.
       detail:
         tests > 0
-          ? `${count(tests)} test file(s) match the ${language.id} test pattern`
-          : `no file matches the ${language.id} test pattern — the repository has 0 tests`,
+          ? `${count(tests)} test file(s) match ${language.testPattern}`
+          : `no file matches ${language.testPattern}`,
     },
     {
       category: 'setup',

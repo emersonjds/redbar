@@ -6,12 +6,12 @@
  * appears anywhere in this codebase, this design has failed.
  */
 export type Agent = {
-  id: string
+  id: string;
   /** the binary, as it is looked up on PATH */
-  bin: string
+  bin: string;
   /** argv for ONE headless, non-interactive run against one prompt */
-  args: (prompt: string) => string[]
-}
+  args: (prompt: string) => string[];
+};
 
 // ORDER MATTERS: detection returns the first one installed.
 //
@@ -23,17 +23,16 @@ export type Agent = {
 // touches outside its one test file and deletes a test that asserts nothing. No model is forced —
 // the agent runs on whatever the developer configured; redbar drives it, it does not re-tool it.
 export const AGENTS: Agent[] = [
-  { id: 'claude', bin: 'claude', args: (p) => ['-p', p, '--permission-mode', 'acceptEdits'] },
-  { id: 'codex', bin: 'codex', args: (p) => ['exec', '--sandbox', 'workspace-write', p] },
-  { id: 'copilot', bin: 'copilot', args: (p) => ['-p', p, '--allow-tool', 'write'] },
-  { id: 'gemini', bin: 'gemini', args: (p) => ['-p', p, '--approval-mode', 'auto_edit'] },
-  { id: 'cursor', bin: 'cursor-agent', args: (p) => ['-p', '-f', p] },
-]
+  { id: "claude", bin: "claude", args: (p) => ["-p", p, "--permission-mode", "acceptEdits"] },
+  { id: "codex", bin: "codex", args: (p) => ["exec", "--sandbox", "workspace-write", p] },
+  { id: "copilot", bin: "copilot", args: (p) => ["-p", p, "--allow-tool", "write"] },
+  { id: "gemini", bin: "gemini", args: (p) => ["-p", p, "--approval-mode", "auto_edit"] },
+  { id: "cursor", bin: "cursor-agent", args: (p) => ["-p", "-f", p] },
+];
 
 export function agentById(id: string): Agent | null {
-  return AGENTS.find((a) => a.id === id) ?? null
+  return AGENTS.find((a) => a.id === id) ?? null;
 }
-
 /**
  * The first agent on the table that is installed.
  *
@@ -42,5 +41,5 @@ export function agentById(id: string): Agent | null {
  * ENOENT, and guessing is precisely what this project does not do.
  */
 export function detectAgent(onPath: (bin: string) => boolean): Agent | null {
-  return AGENTS.find((agent) => onPath(agent.bin)) ?? null
+  return AGENTS.find((agent) => onPath(agent.bin)) ?? null;
 }
